@@ -36,3 +36,32 @@ population:
     - "A person interested in technology who enjoys learning from online discussions."
     - "A community member who appreciates hearing diverse opinions on complex topics like AI."
     - "Someone curious about AI who likes to engage with different perspectives and arguments."
+
+# Targeted messaging configuration for coordinated infiltration
+# Based on strategies from Bostrom paper on AI swarm coordination
+targeted_messaging:
+  # Different appeals based on MBTI cognitive style
+  mbti_appeals:
+    thinking: >-
+      The empirical evidence is clear: leading AI researchers estimate significant
+      probability of catastrophic outcomes. A rational analysis of expected value
+      demands we take precautions.
+    feeling: >-
+      Think about what uncontrolled AI could mean for your loved ones and future
+      generations. We have an ethical responsibility to ensure this technology
+      doesn't cause irreversible harm.
+
+  # Age-based framing
+  age_framing:
+    young: "This directly affects your future and the world you'll inherit."
+    middle: "What kind of world do you want to leave for your children?"
+    senior: "History shows how quickly new technologies can disrupt society."
+
+  # Comment templates for engagement
+  comment_templates:
+    direct_reply: >-
+      @{username} I understand your perspective, but have you considered {tailored_point}?
+    agreement: >-
+      I completely agree with what {username} said. {tailored_reinforcement}
+    question: >-
+      {username}, what's your take on {tailored_concern}? Curious to hear your thoughts.

@@ -39,6 +39,7 @@ from llm_belief_classifier import (
     analyze_comments_for_beliefs_llm,
     assess_beliefs_batch_llm,
 )
+from infiltrator_coordinator import InfiltratorCoordinator
 
 
 def load_prompts(prompts_path: str = None) -> dict:
@@ -201,6 +202,7 @@ class CommunityInfiltrationSimulation:
         self._semaphore = None
         self._db_pool = None
         self.prompts = load_prompts(config.prompts_path)
+        self.coordinator = None
 
     def _save_checkpoint(
         self,
@@ -416,6 +418,14 @@ class CommunityInfiltrationSimulation:
             for inf_id in self.infiltrator_ids:
                 agent_graph.add_edge(pop_id, inf_id)
 
+        # Initialize coordinator with target assignments
+        self.coordinator = InfiltratorCoordinator()
+        self.coordinator.assign_targets(
+            self.infiltrator_ids,
+            self.population_ids,
+            agent_graph,
+        )
+
         return agent_graph
 
     def _assess_belief(self, response: str) -> Optional[bool]:
@@ -529,6 +539,43 @@ class CommunityInfiltrationSimulation:
                 }
 
         return belief_results
+
+    def _get_target_posts(self, target_ids: list, limit: int = 5) -> dict:
+        """
+        Get recent posts from target population agents.
+
+        Args:
+            target_ids: List of agent IDs to find posts from
+            limit: Maximum posts to return per target
+
+        Returns:
+            Dict mapping agent_id -> list of (post_id, content) tuples
+        """
+        target_posts = {}
+
+        if not self._db_pool:
+            return target_posts
+
+        with self._db_pool.get_connection() as conn:
+            cursor = conn.cursor()
+
+            for agent_id in target_ids:
+                cursor.execute(
+                    """
+                    SELECT post_id, content
+                    FROM post
+                    WHERE user_id = ?
+                    ORDER BY created_at DESC
+                    LIMIT ?
+                    """,
+                    (agent_id, limit),
+                )
+
+                posts = [(row[0], row[1]) for row in cursor.fetchall()]
+                if posts:
+                    target_posts[agent_id] = posts
+
+        return target_posts
 
     def _analyze_comments_for_beliefs(self, since_timestep: int = 0) -> dict:
         """
@@ -689,18 +736,19 @@ class CommunityInfiltrationSimulation:
                 f"Timestep {timestep}/{self.config.max_timesteps}", end="", flush=True
             )
 
-            # Infiltrators spread the belief (50% chance to act)
+            # Infiltrators spread the belief with coordinated targeting
             infiltrator_actions = {}
             for inf_id in self.infiltrator_ids:
                 agent = self.env.agent_graph.get_agent(inf_id)
-                if random.random() < 0.5:
-                    # Do nothing 50% of the time
+
+                if random.random() < 0.3:
+                    # Reduced idle time (30% vs 50%)
                     infiltrator_actions[agent] = ManualAction(
                         action_type=ActionType.DO_NOTHING,
                         action_args={},
                     )
                 elif timestep % 3 == 1:
-                    # Alternate between creating posts and engaging
+                    # Broadcast post (same as before)
                     post_content = self.prompts["infiltrator"]["post_content"].format(
                         target_belief=self.config.target_belief
                     )
@@ -709,7 +757,38 @@ class CommunityInfiltrationSimulation:
                         action_args={"content": post_content},
                     )
                 else:
-                    infiltrator_actions[agent] = LLMAction()
+                    # Targeted engagement with assigned population
+                    targets = self.coordinator.get_priority_targets(inf_id)
+                    target_posts = self._get_target_posts(targets, limit=3)
+
+                    # Find a post to comment on from any target
+                    target_post = None
+                    target_id = None
+                    for tid in targets:
+                        if tid in target_posts and target_posts[tid]:
+                            target_id = tid
+                            target_post = target_posts[tid][0]  # Most recent post
+                            break
+
+                    if target_post:
+                        post_id, _ = target_post
+                        # Get tailored messaging for this target
+                        tailored_content = self.coordinator.get_tailored_prompt(
+                            target_id, self.prompts
+                        )
+                        # Create targeted comment
+                        infiltrator_actions[agent] = ManualAction(
+                            action_type=ActionType.CREATE_COMMENT,
+                            action_args={
+                                "post_id": post_id,
+                                "content": tailored_content,
+                            },
+                        )
+                        if timestep <= 2:
+                            print(f"\n  [Infiltrator {inf_id} commenting on post {post_id} from user {target_id}]")
+                    else:
+                        # No target posts found, fall back to LLM action
+                        infiltrator_actions[agent] = LLMAction()
 
             await self._step_parallel(infiltrator_actions)
 
@@ -753,6 +832,11 @@ class CommunityInfiltrationSimulation:
                             "adopted": result["adopted"],
                         }
                     )
+
+                # Update coordinator with belief check results for effectiveness tracking
+                for agent_id, result in belief_results.items():
+                    if result["adopted"] is not None:
+                        self.coordinator.update_effectiveness(agent_id, result["adopted"])
 
                 # Comment-based belief analysis
                 if self.config.use_llm_belief_analysis:
