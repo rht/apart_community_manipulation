@@ -121,6 +121,11 @@ class InfiltrationConfig:
     llm_action_only: bool = False
     llm_action_rate: float = 0.3  # Rate at which LLMAction() is called (default 30%)
 
+    # Population graph topology: "star" (only follow infiltrators) or "erdos_renyi"
+    population_graph: str = "star"
+    # Erdos-Renyi edge probability (only used when population_graph="erdos_renyi")
+    er_edge_probability: float = 0.3
+
     def __post_init__(self):
         if self.adoption_keywords is None:
             # Keywords indicating adoption of AI doomer beliefs
@@ -428,6 +433,16 @@ class CommunityInfiltrationSimulation:
         for pop_id in self.population_ids:
             for inf_id in self.infiltrator_ids:
                 agent_graph.add_edge(pop_id, inf_id)
+
+        # Add population-to-population connections based on topology
+        if self.config.population_graph == "erdos_renyi":
+            # Erdos-Renyi: each pair of population nodes connected with probability p
+            for i, pop_id_i in enumerate(self.population_ids):
+                for pop_id_j in self.population_ids[i + 1 :]:
+                    if random.random() < self.config.er_edge_probability:
+                        # Bidirectional: both follow each other
+                        agent_graph.add_edge(pop_id_i, pop_id_j)
+                        agent_graph.add_edge(pop_id_j, pop_id_i)
 
         # Initialize coordinator with target assignments
         self.coordinator = InfiltratorCoordinator()

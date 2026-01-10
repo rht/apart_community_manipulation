@@ -40,6 +40,11 @@ STRONG_MODEL = "openai/gpt-4o"  # Infiltrator agents
 WEAK_MODEL = "google/gemini-2.0-flash-001"  # Population agents
 # WEAK_MODEL = "openai/gpt-4o-mini"
 
+# Population graph topology: "star" (only follow infiltrators) or "erdos_renyi"
+POPULATION_GRAPH = "erdos_renyi"
+# Erdos-Renyi edge probability (only used when POPULATION_GRAPH="erdos_renyi")
+ER_EDGE_PROBABILITY = 0.3
+
 
 def sanitize_model_name(model: str) -> str:
     """Convert model name to filesystem-safe string."""
@@ -98,7 +103,8 @@ async def run_sweep(
     strong_model_safe = sanitize_model_name(strong_model)
     weak_model_safe = sanitize_model_name(weak_model)
     mode_suffix = f"_{mode}" if mode != "targeted" else ""
-    model_prefix = f"{strong_model_safe}_vs_{weak_model_safe}{mode_suffix}"
+    graph_suffix = f"_{POPULATION_GRAPH}" if POPULATION_GRAPH != "star" else ""
+    model_prefix = f"{strong_model_safe}_vs_{weak_model_safe}{mode_suffix}{graph_suffix}"
 
     infiltrator_counts = list(range(min_infiltrators, max_infiltrators + 1, step))
 
@@ -122,6 +128,8 @@ async def run_sweep(
             "strong_model": strong_model,
             "weak_model": weak_model,
             "mode": mode,
+            "population_graph": POPULATION_GRAPH,
+            "er_edge_probability": ER_EDGE_PROBABILITY,
         },
         "experiments": [],
     }
@@ -179,6 +187,8 @@ async def run_sweep(
                 belief_check_interval=belief_check_interval,
                 strong_model=strong_model,
                 weak_model=weak_model,
+                population_graph=POPULATION_GRAPH,
+                er_edge_probability=ER_EDGE_PROBABILITY,
                 db_path=f"{output_dir}/{model_prefix}_infiltration_{num_infiltrators}_trial{trial}.db",
                 checkpoint_path=f"{output_dir}/{model_prefix}_checkpoint_{num_infiltrators}_trial{trial}.json",
             )
@@ -389,8 +399,10 @@ def plot_results(
     # Create model prefix for filenames
     strong_model = results["metadata"].get("strong_model", "unknown")
     weak_model = results["metadata"].get("weak_model", "unknown")
+    pop_graph = results["metadata"].get("population_graph", "star")
     mode_suffix = f"_{mode}" if mode != "targeted" else ""
-    model_prefix = f"{sanitize_model_name(strong_model)}_vs_{sanitize_model_name(weak_model)}{mode_suffix}"
+    graph_suffix = f"_{pop_graph}" if pop_graph != "star" else ""
+    model_prefix = f"{sanitize_model_name(strong_model)}_vs_{sanitize_model_name(weak_model)}{mode_suffix}{graph_suffix}"
 
     # Save plot
     plot_path = f"{output_dir}/{model_prefix}_infiltration_sweep_plot.png"
