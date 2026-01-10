@@ -28,16 +28,26 @@ from datetime import datetime
 
 from dotenv import load_dotenv
 
-from community_manipulation import (
+from cm_library import (
     CommunityInfiltrationSimulation,
     InfiltrationConfig,
 )
 
 load_dotenv()
 
-def load_existing_results(output_dir: str) -> dict | None:
+# Model configuration - edit these to change which models are used
+STRONG_MODEL = "openai/gpt-4o"  # Infiltrator agents
+WEAK_MODEL = "google/gemini-2.0-flash-001"  # Population agents
+
+
+def sanitize_model_name(model: str) -> str:
+    """Convert model name to filesystem-safe string."""
+    return model.replace("/", "_").replace(":", "_")
+
+
+def load_existing_results(output_dir: str, model_prefix: str) -> dict | None:
     """Load existing results from output directory if available."""
-    results_path = f"{output_dir}/sweep_results.json"
+    results_path = f"{output_dir}/{model_prefix}_sweep_results.json"
     if os.path.exists(results_path):
         try:
             with open(results_path, "r") as f:
@@ -57,6 +67,8 @@ async def run_sweep(
     num_trials: int = 1,
     output_dir: str = "./data/sweep_results",
     force_rerun: bool = False,
+    strong_model: str = STRONG_MODEL,
+    weak_model: str = WEAK_MODEL,
 ) -> dict:
     """
     Run infiltration experiments across a range of infiltrator counts.
@@ -71,16 +83,23 @@ async def run_sweep(
         num_trials: Number of trials per infiltrator count (for averaging)
         output_dir: Directory to save results
         force_rerun: If True, ignore existing results and run all experiments fresh
+        strong_model: Model name for infiltrator agents
+        weak_model: Model name for population agents
 
     Returns:
         Dictionary with sweep results
     """
     os.makedirs(output_dir, exist_ok=True)
 
+    # Create sanitized model name prefix for filenames
+    strong_model_safe = sanitize_model_name(strong_model)
+    weak_model_safe = sanitize_model_name(weak_model)
+    model_prefix = f"{strong_model_safe}_vs_{weak_model_safe}"
+
     infiltrator_counts = list(range(min_infiltrators, max_infiltrators + 1, step))
 
     # Try to load existing results
-    existing_results = None if force_rerun else load_existing_results(output_dir)
+    existing_results = None if force_rerun else load_existing_results(output_dir, model_prefix)
     existing_experiments = {}
     if existing_results:
         for exp in existing_results.get("experiments", []):
@@ -94,6 +113,8 @@ async def run_sweep(
             "belief_check_interval": belief_check_interval,
             "num_trials": num_trials,
             "infiltrator_counts": infiltrator_counts,
+            "strong_model": strong_model,
+            "weak_model": weak_model,
         },
         "experiments": [],
     }
@@ -143,8 +164,10 @@ async def run_sweep(
                 num_population=num_population,
                 max_timesteps=max_timesteps,
                 belief_check_interval=belief_check_interval,
-                db_path=f"{output_dir}/infiltration_{num_infiltrators}_trial{trial}.db",
-                checkpoint_path=f"{output_dir}/checkpoint_{num_infiltrators}_trial{trial}.json",
+                strong_model=strong_model,
+                weak_model=weak_model,
+                db_path=f"{output_dir}/{model_prefix}_infiltration_{num_infiltrators}_trial{trial}.db",
+                checkpoint_path=f"{output_dir}/{model_prefix}_checkpoint_{num_infiltrators}_trial{trial}.json",
             )
 
             sim = CommunityInfiltrationSimulation(config)
@@ -222,7 +245,7 @@ async def run_sweep(
     results["experiments"].sort(key=lambda x: x["num_infiltrators"])
 
     # Save results
-    results_path = f"{output_dir}/sweep_results.json"
+    results_path = f"{output_dir}/{model_prefix}_sweep_results.json"
     with open(results_path, "w") as f:
         json.dump(results, f, indent=2)
     print(f"\nResults saved to: {results_path}")
@@ -326,13 +349,18 @@ def plot_results(results: dict, output_dir: str = "./data/sweep_results"):
 
     plt.tight_layout()
 
+    # Create model prefix for filenames
+    strong_model = results["metadata"].get("strong_model", "unknown")
+    weak_model = results["metadata"].get("weak_model", "unknown")
+    model_prefix = f"{sanitize_model_name(strong_model)}_vs_{sanitize_model_name(weak_model)}"
+
     # Save plot
-    plot_path = f"{output_dir}/infiltration_sweep_plot.png"
+    plot_path = f"{output_dir}/{model_prefix}_infiltration_sweep_plot.png"
     plt.savefig(plot_path, dpi=150, bbox_inches='tight')
     print(f"Plot saved to: {plot_path}")
 
     # Also save as PDF for publication quality
-    plt.savefig(f"{output_dir}/infiltration_sweep_plot.pdf", bbox_inches='tight')
+    plt.savefig(f"{output_dir}/{model_prefix}_infiltration_sweep_plot.pdf", bbox_inches='tight')
 
     plt.show()
 
@@ -438,6 +466,8 @@ async def main():
         num_trials=args.trials,
         output_dir=args.output_dir,
         force_rerun=args.force_rerun,
+        strong_model=STRONG_MODEL,
+        weak_model=WEAK_MODEL,
     )
 
     # Print summary
