@@ -114,6 +114,9 @@ class InfiltrationConfig:
     # Enable coordinated targeted commenting (infiltrators comment on target posts with tailored messages)
     enable_targeted_commenting: bool = True
 
+    # Broadcast-only mode: infiltrators only do broadcast posts (no idle, no comments)
+    broadcast_only: bool = False
+
     def __post_init__(self):
         if self.adoption_keywords is None:
             # Keywords indicating adoption of AI doomer beliefs

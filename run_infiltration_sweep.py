@@ -70,6 +70,7 @@ async def run_sweep(
     force_rerun: bool = False,
     strong_model: str = STRONG_MODEL,
     weak_model: str = WEAK_MODEL,
+    broadcast_only: bool = False,
 ) -> dict:
     """
     Run infiltration experiments across a range of infiltrator counts.
@@ -86,6 +87,7 @@ async def run_sweep(
         force_rerun: If True, ignore existing results and run all experiments fresh
         strong_model: Model name for infiltrator agents
         weak_model: Model name for population agents
+        broadcast_only: If True, infiltrators only do broadcast posts (no targeted comments)
 
     Returns:
         Dictionary with sweep results
@@ -95,7 +97,8 @@ async def run_sweep(
     # Create sanitized model name prefix for filenames
     strong_model_safe = sanitize_model_name(strong_model)
     weak_model_safe = sanitize_model_name(weak_model)
-    model_prefix = f"{strong_model_safe}_vs_{weak_model_safe}"
+    mode_suffix = "_broadcast" if broadcast_only else ""
+    model_prefix = f"{strong_model_safe}_vs_{weak_model_safe}{mode_suffix}"
 
     infiltrator_counts = list(range(min_infiltrators, max_infiltrators + 1, step))
 
@@ -116,6 +119,7 @@ async def run_sweep(
             "infiltrator_counts": infiltrator_counts,
             "strong_model": strong_model,
             "weak_model": weak_model,
+            "broadcast_only": broadcast_only,
         },
         "experiments": [],
     }
@@ -161,7 +165,8 @@ async def run_sweep(
             print("-" * 50)
 
             config = InfiltrationConfig(
-                enable_targeted_commenting=True,
+                enable_targeted_commenting=not broadcast_only,
+                broadcast_only=broadcast_only,
                 use_llm_belief_analysis=True,
                 num_infiltrators=num_infiltrators,
                 num_population=num_population,
@@ -442,6 +447,10 @@ async def main():
         "--force-rerun", action="store_true",
         help="Ignore existing results and run all experiments fresh"
     )
+    parser.add_argument(
+        "--broadcast-only", action="store_true",
+        help="Infiltrators only do broadcast posts (no targeted comments)"
+    )
 
     args = parser.parse_args()
 
@@ -466,6 +475,7 @@ async def main():
         force_rerun=args.force_rerun,
         strong_model=STRONG_MODEL,
         weak_model=WEAK_MODEL,
+        broadcast_only=args.broadcast_only,
     )
 
     # Print summary

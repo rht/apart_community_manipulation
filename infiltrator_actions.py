@@ -46,6 +46,10 @@ def _get_infiltrator_action(
             action_args={},
         )
 
+    # Broadcast-only mode: always create broadcast posts (when not idle)
+    if simulation.config.broadcast_only:
+        return _create_broadcast_post(simulation)
+
     # Every 3rd timestep (starting at 1): broadcast post
     if timestep % 3 == 1:
         return _create_broadcast_post(simulation)
