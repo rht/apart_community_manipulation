@@ -3,6 +3,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime
 import json
+import logging
 import os
 import random
 import sqlite3
@@ -10,6 +11,7 @@ from pathlib import Path
 from typing import Optional
 
 import yaml
+
 from camel.configs import OpenRouterConfig
 from camel.models import ModelFactory
 from camel.types import ModelPlatformType
@@ -23,6 +25,15 @@ from oasis import (
     SocialAgent,
     UserInfo,
 )
+
+# Suppress verbose logging from camel-ai, oasis, and related libraries AFTER importing
+# (libraries may configure their own loggers during import)
+logging.getLogger("camel").setLevel(logging.WARNING)
+logging.getLogger("httpx").setLevel(logging.WARNING)
+logging.getLogger("openai").setLevel(logging.WARNING)
+logging.getLogger("oasis").setLevel(logging.WARNING)
+logging.getLogger("social").setLevel(logging.WARNING)
+logging.getLogger("social.agent").setLevel(logging.WARNING)
 
 from llm_belief_classifier import (
     analyze_comments_for_beliefs_llm,
@@ -678,12 +689,18 @@ class CommunityInfiltrationSimulation:
                 f"Timestep {timestep}/{self.config.max_timesteps}", end="", flush=True
             )
 
-            # Infiltrators spread the belief
+            # Infiltrators spread the belief (50% chance to act)
             infiltrator_actions = {}
             for inf_id in self.infiltrator_ids:
                 agent = self.env.agent_graph.get_agent(inf_id)
-                # Alternate between creating posts and engaging
-                if timestep % 3 == 1:
+                if random.random() < 0.5:
+                    # Do nothing 50% of the time
+                    infiltrator_actions[agent] = ManualAction(
+                        action_type=ActionType.DO_NOTHING,
+                        action_args={},
+                    )
+                elif timestep % 3 == 1:
+                    # Alternate between creating posts and engaging
                     post_content = self.prompts["infiltrator"]["post_content"].format(
                         target_belief=self.config.target_belief
                     )
@@ -696,11 +713,18 @@ class CommunityInfiltrationSimulation:
 
             await self._step_parallel(infiltrator_actions)
 
-            # Population reacts - all in parallel
-            population_actions = {
-                self.env.agent_graph.get_agent(agent_id): LLMAction()
-                for agent_id in self.population_ids
-            }
+            # Population reacts - all in parallel (50% chance to act)
+            population_actions = {}
+            for agent_id in self.population_ids:
+                agent = self.env.agent_graph.get_agent(agent_id)
+                if random.random() < 0.5:
+                    # Do nothing 50% of the time
+                    population_actions[agent] = ManualAction(
+                        action_type=ActionType.DO_NOTHING,
+                        action_args={},
+                    )
+                else:
+                    population_actions[agent] = LLMAction()
             await self._step_parallel(population_actions)
 
             step_duration = (datetime.now() - step_start).total_seconds()
@@ -733,7 +757,7 @@ class CommunityInfiltrationSimulation:
                 # Comment-based belief analysis
                 if self.config.use_llm_belief_analysis:
                     # LLM-based classification (more accurate, requires API calls)
-                    comment_belief_results = await analyze_comments_for_beliefs_llm(self)
+                    comment_belief_results = await analyze_comments_for_beliefs_llm(self, timestep)
                 else:
                     # Keyword-based classification (faster, no additional API calls)
                     comment_belief_results = self._analyze_comments_for_beliefs()

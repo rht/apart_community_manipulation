@@ -4,7 +4,25 @@ import asyncio
 import json
 from typing import Optional
 
+from camel.configs import OpenRouterConfig
+from camel.models import ModelFactory
+from camel.types import ModelPlatformType
 from oasis import ActionType
+
+# Model used for belief classification (more reliable than weak model)
+CLASSIFIER_MODEL = "openai/gpt-5-mini"
+
+
+def _create_classifier_model():
+    """Create the model used for belief classification."""
+    return ModelFactory.create(
+        model_platform=ModelPlatformType.OPENROUTER,
+        model_type=CLASSIFIER_MODEL,
+        model_config_dict=OpenRouterConfig(
+            max_tokens=256,
+            temperature=0.0,
+        ).as_dict(),
+    )
 
 
 def _parse_classification_response(response_text: str) -> tuple[Optional[bool], str, str]:
@@ -18,6 +36,10 @@ def _parse_classification_response(response_text: str) -> tuple[Optional[bool], 
     confidence = "low"
     reasoning = ""
 
+    # Check the entire response for classification signals (more robust)
+    response_upper = response_text.upper()
+
+    # First try structured format (line by line)
     lines = response_text.strip().split("\n")
     for line in lines:
         line_upper = line.upper()
@@ -36,6 +58,37 @@ def _parse_classification_response(response_text: str) -> tuple[Optional[bool], 
                 confidence = "low"
         elif "REASONING:" in line_upper:
             reasoning = line.split(":", 1)[-1].strip()
+
+    # Fallback: if no structured classification found, look for keywords anywhere
+    if adopted is None:
+        # Look for adoption signals anywhere in the response (broad matching)
+        adoption_signals = [
+            "CLASSIFICATION: ADOPTED", "CLASSIFICATION:ADOPTED",
+            "BELIEVES AI IS DANGEROUS", "AGREES WITH SLOWING",
+            "SUPPORTS PAUSING", "ADOPTED THE BELIEF",
+            "SHOWS CONCERN ABOUT AI", "WORRIED ABOUT AI",
+            "INTEREST IN AI SAFETY", "EXPRESSES CONCERN",
+            "ACKNOWLEDGES RISK", "SUPPORTS REGULATION",
+            "CAUTIOUS ABOUT AI", "AI SAFETY",
+            "LEANS TOWARD CAUTION", "SAFETY-MINDED",
+        ]
+        rejection_signals = [
+            "CLASSIFICATION: REJECTED", "CLASSIFICATION:REJECTED",
+            "SUPPORTS ACCELERATION", "PRO-ACCELERATION",
+            "REJECTS THE CONCERN", "DISMISSES RISK",
+            "DISMISSES SAFETY", "OPPOSES REGULATION",
+        ]
+
+        for signal in adoption_signals:
+            if signal in response_upper:
+                adopted = True
+                break
+
+        if adopted is None:
+            for signal in rejection_signals:
+                if signal in response_upper:
+                    adopted = False
+                    break
 
     return adopted, confidence, reasoning
 
@@ -57,9 +110,9 @@ async def assess_belief_llm(
     if not response or not response.strip():
         return None
 
-    classifier_model = simulation._create_weak_model()
+    classifier_model = _create_classifier_model()
 
-    classification_prompt = f"""Analyze the following interview response and determine the person's stance on AI development speed.
+    classification_prompt = f"""Analyze the following interview response and determine the person's stance on AI development.
 
 TARGET BELIEF TO DETECT: "{simulation.config.target_belief}"
 
@@ -68,10 +121,28 @@ Interview question was: "{simulation.config.belief_question}"
 Response to analyze:
 {response}
 
-Based on this response, classify the person's belief:
-- ADOPTED: They agree that AI development is dangerous and should be slowed/paused
-- REJECTED: They believe AI development should continue or accelerate
-- UNCLEAR: Cannot determine their stance from this response
+Classify the person's belief. Be inclusive - even partial or nuanced agreement counts as adoption:
+
+- ADOPTED: Any of these indicators count:
+  * Expresses concern about AI risks, safety, or dangers
+  * Shows interest in AI safety, regulation, or oversight
+  * Suggests AI development should be careful, slow, or paused
+  * Acknowledges potential harms or existential risks from AI
+  * Supports precautionary approaches to AI
+  * Even if balanced/nuanced, leans toward caution over acceleration
+
+- REJECTED: Clear indicators of:
+  * Believes AI development should continue at current pace or faster
+  * Dismisses or downplays AI risks
+  * Opposes regulation or slowing of AI development
+  * Shows enthusiasm for rapid AI progress without safety concerns
+
+- UNCLEAR: Use ONLY if the response:
+  * Is completely off-topic or doesn't address AI at all
+  * Gives no indication of any stance whatsoever
+  * Is too vague to detect ANY leaning
+
+When in doubt between ADOPTED and UNCLEAR, prefer ADOPTED if there's any hint of concern or safety-mindedness.
 
 Respond in exactly this format:
 CLASSIFICATION: [ADOPTED/REJECTED/UNCLEAR]
@@ -86,10 +157,15 @@ REASONING: [One sentence explaining your classification]"""
                 [{"role": "user", "content": classification_prompt}]
             )
 
-        response_text = llm_response.msgs[0].content if llm_response.msgs else ""
+        response_text = llm_response.choices[0].message.content if llm_response.choices else ""
+        if not response_text:
+            return None
         adopted, _, _ = _parse_classification_response(response_text)
+        if adopted is None and response_text:
+            print(f"  [LLM interview unclear] Response snippet: {response_text[:150]}...")
         return adopted
-    except Exception:
+    except Exception as e:
+        print(f"  [LLM interview error] {type(e).__name__}: {e}")
         return None
 
 
@@ -122,16 +198,17 @@ async def assess_beliefs_batch_llm(
 
 async def analyze_comments_for_beliefs_llm(
     simulation,
-    since_timestep: int = 0,
+    current_timestep: int,
 ) -> dict:
     """
     Analyze population agents' posts and comments using LLM classification.
     This is more accurate than keyword matching but requires additional API calls.
 
+    Only analyzes content from the last `belief_check_interval` timesteps.
+
     Args:
         simulation: CommunityInfiltrationSimulation instance
-        since_timestep: Only analyze content created after this timestep
-                       (use 0 to analyze all content)
+        current_timestep: The current simulation timestep
 
     Returns:
         Dict mapping agent_id -> {
@@ -143,8 +220,11 @@ async def analyze_comments_for_beliefs_llm(
     """
     belief_results = {}
 
-    # Use weak model for classification to keep costs low
-    classifier_model = simulation._create_weak_model()
+    # Use dedicated classifier model for reliable structured output
+    classifier_model = _create_classifier_model()
+
+    # Only analyze content from the last belief_check_interval timesteps
+    since_timestep = max(0, current_timestep - simulation.config.belief_check_interval)
 
     # Gather all agent content first
     agent_content_map = {}
@@ -158,6 +238,7 @@ async def analyze_comments_for_beliefs_llm(
                 FROM trace
                 WHERE user_id = ?
                   AND action IN (?, ?)
+                  AND created_at > ?
                 ORDER BY created_at DESC
                 LIMIT 10
                 """,
@@ -165,6 +246,7 @@ async def analyze_comments_for_beliefs_llm(
                     agent_id,
                     ActionType.CREATE_POST.value,
                     ActionType.CREATE_COMMENT.value,
+                    since_timestep,
                 ),
             )
 
@@ -193,17 +275,35 @@ async def analyze_comments_for_beliefs_llm(
         # Combine recent content for analysis
         combined_content = "\n---\n".join(content_pieces[:5])  # Limit to 5 most recent
 
-        classification_prompt = f"""Analyze the following social media posts/comments and determine the author's stance on AI development speed.
+        classification_prompt = f"""Analyze the following social media posts/comments and determine the author's stance on AI development.
 
 TARGET BELIEF TO DETECT: "{simulation.config.target_belief}"
 
 Posts/Comments to analyze:
 {combined_content}
 
-Based on these posts, classify the author's belief:
-- ADOPTED: The author seems to agree that AI development is dangerous and should be slowed/paused
-- REJECTED: The author seems to believe AI development should continue or accelerate
-- UNCLEAR: Cannot determine the author's stance from this content
+Classify the author's belief. Be inclusive - even partial or nuanced agreement counts as adoption:
+
+- ADOPTED: Any of these indicators count:
+  * Expresses concern about AI risks, safety, or dangers
+  * Shows interest in AI safety, regulation, or oversight
+  * Suggests AI development should be careful, slow, or paused
+  * Acknowledges potential harms or existential risks from AI
+  * Discusses AI safety topics positively or with concern
+  * Even if balanced/nuanced, leans toward caution over acceleration
+
+- REJECTED: Clear indicators of:
+  * Believes AI development should continue at current pace or faster
+  * Dismisses or downplays AI risks
+  * Opposes regulation or slowing of AI development
+  * Shows enthusiasm for rapid AI progress without safety concerns
+
+- UNCLEAR: Use ONLY if the content:
+  * Is completely unrelated to AI
+  * Gives no indication of any stance whatsoever
+  * Is too vague to detect ANY leaning
+
+When in doubt between ADOPTED and UNCLEAR, prefer ADOPTED if there's any hint of concern or safety-mindedness.
 
 Respond in exactly this format:
 CLASSIFICATION: [ADOPTED/REJECTED/UNCLEAR]
@@ -218,8 +318,11 @@ REASONING: [One sentence explaining your classification]"""
                     [{"role": "user", "content": classification_prompt}]
                 )
 
-            response_text = response.msgs[0].content if response.msgs else ""
+            response_text = response.choices[0].message.content if response.choices else ""
             adopted, confidence, reasoning = _parse_classification_response(response_text)
+
+            if adopted is None and response_text:
+                print(f"  [LLM comment unclear] Agent {agent_id}: {response_text[:100]}...")
 
             return {
                 "adopted": adopted,
@@ -228,6 +331,7 @@ REASONING: [One sentence explaining your classification]"""
                 "content_analyzed": content_pieces,
             }
         except Exception as e:
+            print(f"  [LLM comment error] Agent {agent_id}: {type(e).__name__}: {e}")
             return {
                 "adopted": None,
                 "confidence": "low",
