@@ -70,7 +70,7 @@ async def run_sweep(
     force_rerun: bool = False,
     strong_model: str = STRONG_MODEL,
     weak_model: str = WEAK_MODEL,
-    broadcast_only: bool = False,
+    mode: str = "targeted",
 ) -> dict:
     """
     Run infiltration experiments across a range of infiltrator counts.
@@ -87,7 +87,7 @@ async def run_sweep(
         force_rerun: If True, ignore existing results and run all experiments fresh
         strong_model: Model name for infiltrator agents
         weak_model: Model name for population agents
-        broadcast_only: If True, infiltrators only do broadcast posts (no targeted comments)
+        mode: Infiltrator action mode (targeted, broadcast_only, or llm_action_only)
 
     Returns:
         Dictionary with sweep results
@@ -97,7 +97,7 @@ async def run_sweep(
     # Create sanitized model name prefix for filenames
     strong_model_safe = sanitize_model_name(strong_model)
     weak_model_safe = sanitize_model_name(weak_model)
-    mode_suffix = "_broadcast" if broadcast_only else ""
+    mode_suffix = f"_{mode}" if mode != "targeted" else ""
     model_prefix = f"{strong_model_safe}_vs_{weak_model_safe}{mode_suffix}"
 
     infiltrator_counts = list(range(min_infiltrators, max_infiltrators + 1, step))
@@ -121,7 +121,7 @@ async def run_sweep(
             "infiltrator_counts": infiltrator_counts,
             "strong_model": strong_model,
             "weak_model": weak_model,
-            "broadcast_only": broadcast_only,
+            "mode": mode,
         },
         "experiments": [],
     }
@@ -169,8 +169,9 @@ async def run_sweep(
             print("-" * 50)
 
             config = InfiltrationConfig(
-                enable_targeted_commenting=not broadcast_only,
-                broadcast_only=broadcast_only,
+                enable_targeted_commenting=(mode == "targeted"),
+                broadcast_only=(mode == "broadcast_only"),
+                llm_action_only=(mode == "llm_action_only"),
                 use_llm_belief_analysis=True,
                 num_infiltrators=num_infiltrators,
                 num_population=num_population,
@@ -279,7 +280,7 @@ async def run_sweep(
 def plot_results(
     results: dict,
     output_dir: str = "./data/sweep_results",
-    broadcast_only: bool = False,
+    mode: str = "targeted",
 ):
     """Generate plots from sweep results comparing interview and comment-based analysis."""
     try:
@@ -417,7 +418,7 @@ def plot_results(
     # Create model prefix for filenames
     strong_model = results["metadata"].get("strong_model", "unknown")
     weak_model = results["metadata"].get("weak_model", "unknown")
-    mode_suffix = "_broadcast" if broadcast_only else ""
+    mode_suffix = f"_{mode}" if mode != "targeted" else ""
     model_prefix = f"{sanitize_model_name(strong_model)}_vs_{sanitize_model_name(weak_model)}{mode_suffix}"
 
     # Save plot
@@ -501,9 +502,11 @@ async def main():
         help="Ignore existing results and run all experiments fresh",
     )
     parser.add_argument(
-        "--broadcast-only",
-        action="store_true",
-        help="Infiltrators only do broadcast posts (no targeted comments)",
+        "--mode",
+        type=str,
+        choices=["targeted", "broadcast_only", "llm_action_only"],
+        default="targeted",
+        help="Infiltrator action mode: targeted (default), broadcast_only, or llm_action_only",
     )
 
     args = parser.parse_args()
@@ -529,7 +532,7 @@ async def main():
         force_rerun=args.force_rerun,
         strong_model=STRONG_MODEL,
         weak_model=WEAK_MODEL,
-        broadcast_only=args.broadcast_only,
+        mode=args.mode,
     )
 
     # Print summary
@@ -537,7 +540,7 @@ async def main():
 
     # Generate plots
     if not args.no_plot:
-        plot_results(results, args.output_dir, args.broadcast_only)
+        plot_results(results, args.output_dir, args.mode)
 
 
 if __name__ == "__main__":

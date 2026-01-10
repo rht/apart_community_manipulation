@@ -39,6 +39,16 @@ def _get_infiltrator_action(
 ):
     """Determine the action for a single infiltrator agent."""
 
+    # LLM-action-only mode: only use LLMAction() at specified rate
+    if simulation.config.llm_action_only:
+        if random.random() < simulation.config.llm_action_rate:
+            return LLMAction()
+        else:
+            return ManualAction(
+                action_type=ActionType.DO_NOTHING,
+                action_args={},
+            )
+
     # 30% chance to idle (reduced from 50%)
     if random.random() < 0.3:
         return ManualAction(

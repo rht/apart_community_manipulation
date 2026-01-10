@@ -117,6 +117,10 @@ class InfiltrationConfig:
     # Broadcast-only mode: infiltrators only do broadcast posts (no idle, no comments)
     broadcast_only: bool = False
 
+    # LLM-action-only mode: infiltrators only use LLMAction() at specified rate
+    llm_action_only: bool = False
+    llm_action_rate: float = 0.3  # Rate at which LLMAction() is called (default 30%)
+
     def __post_init__(self):
         if self.adoption_keywords is None:
             # Keywords indicating adoption of AI doomer beliefs
