@@ -58,12 +58,14 @@ def build_follow_graph(data: dict) -> nx.Graph:
     """Build a network graph from follow relationships (the actual social graph)."""
     G = nx.Graph()
 
-    # Add all users as nodes
+    # Add all users as nodes, keyed by agent_id (since follow table uses agent_id)
     for user_id, info in data["users"].items():
+        agent_id = info["agent_id"]
         is_infiltrator = "infiltrator" in info["user_name"]
-        G.add_node(user_id,
+        G.add_node(agent_id,
                    label=info["user_name"],
                    name=info["name"],
+                   user_id=user_id,
                    is_infiltrator=is_infiltrator)
 
     # Add edges from follow relationships (undirected for visualization)
@@ -123,10 +125,10 @@ def classify_belief_from_response(response_text: str) -> str:
         return "neutral"
 
 
-def parse_interview_beliefs(interviews: list) -> dict:
+def parse_interview_beliefs(interviews: list, user_to_agent: dict) -> dict:
     """
     Parse interview responses to extract belief states over time.
-    Returns dict: {checkpoint_index: {user_id: belief_state}}
+    Returns dict: {checkpoint_index: {agent_id: belief_state}}
     """
     # Group interviews by approximate timestamp (checkpoint)
     checkpoints = defaultdict(dict)
@@ -164,7 +166,9 @@ def parse_interview_beliefs(interviews: list) -> dict:
                     break
 
             belief = classify_belief_from_response(response)
-            checkpoints[checkpoint_idx][user_id] = belief
+            # Map user_id to agent_id for graph lookup
+            agent_id = user_to_agent.get(user_id, user_id)
+            checkpoints[checkpoint_idx][agent_id] = belief
         except (json.JSONDecodeError, KeyError):
             continue
 
@@ -379,9 +383,12 @@ def main():
     G = build_follow_graph(data)
     print(f"  Network has {G.number_of_nodes()} nodes, {G.number_of_edges()} edges")
 
+    # Create user_id to agent_id mapping
+    user_to_agent = {user_id: info["agent_id"] for user_id, info in data["users"].items()}
+
     # Parse beliefs over time
     print("Parsing belief states from interviews...")
-    beliefs = parse_interview_beliefs(data["interviews"])
+    beliefs = parse_interview_beliefs(data["interviews"], user_to_agent)
     print(f"  Found {len(beliefs)} belief checkpoints")
 
     for checkpoint, agent_beliefs in sorted(beliefs.items()):

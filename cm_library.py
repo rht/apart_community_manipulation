@@ -26,6 +26,14 @@ from oasis import (
     UserInfo,
 )
 
+from llm_belief_classifier import (
+    analyze_comments_for_beliefs_llm,
+    assess_beliefs_batch_llm,
+)
+from infiltrator_coordinator import InfiltratorCoordinator
+from infiltrator_actions import build_infiltrator_actions
+
+
 # Suppress verbose logging from camel-ai, oasis, and related libraries AFTER importing
 # (libraries may configure their own loggers during import)
 logging.getLogger("camel").setLevel(logging.WARNING)
@@ -35,12 +43,6 @@ logging.getLogger("oasis").setLevel(logging.WARNING)
 logging.getLogger("social").setLevel(logging.WARNING)
 logging.getLogger("social.agent").setLevel(logging.WARNING)
 
-from llm_belief_classifier import (
-    analyze_comments_for_beliefs_llm,
-    assess_beliefs_batch_llm,
-)
-from infiltrator_coordinator import InfiltratorCoordinator
-from infiltrator_actions import build_infiltrator_actions
 
 
 def load_prompts(prompts_path: str = None) -> dict:
@@ -430,9 +432,12 @@ class CommunityInfiltrationSimulation:
             agent_id += 1
 
         # Create social connections: population follows infiltrators
+        # Track edges for later persistence to database
+        self._follow_edges = []
         for pop_id in self.population_ids:
             for inf_id in self.infiltrator_ids:
                 agent_graph.add_edge(pop_id, inf_id)
+                self._follow_edges.append((pop_id, inf_id))
 
         # Add population-to-population connections based on topology
         if self.config.population_graph == "erdos_renyi":
@@ -443,6 +448,8 @@ class CommunityInfiltrationSimulation:
                         # Bidirectional: both follow each other
                         agent_graph.add_edge(pop_id_i, pop_id_j)
                         agent_graph.add_edge(pop_id_j, pop_id_i)
+                        self._follow_edges.append((pop_id_i, pop_id_j))
+                        self._follow_edges.append((pop_id_j, pop_id_i))
 
         # Initialize coordinator with target assignments
         self.coordinator = InfiltratorCoordinator()
@@ -453,6 +460,24 @@ class CommunityInfiltrationSimulation:
         )
 
         return agent_graph
+
+    def _persist_follow_edges(self):
+        """Persist follow edges to the database."""
+        if not hasattr(self, "_follow_edges") or not self._follow_edges:
+            return
+
+        conn = sqlite3.connect(self.config.db_path)
+        cursor = conn.cursor()
+        timestamp = datetime.now().isoformat()
+
+        for follower_id, followee_id in self._follow_edges:
+            cursor.execute(
+                "INSERT INTO follow (follower_id, followee_id, created_at) VALUES (?, ?, ?)",
+                (follower_id, followee_id, timestamp),
+            )
+
+        conn.commit()
+        conn.close()
 
     def _assess_belief(self, response: str) -> Optional[bool]:
         """
@@ -739,6 +764,9 @@ class CommunityInfiltrationSimulation:
 
         await self.env.reset()
 
+        # Persist follow edges to database
+        self._persist_follow_edges()
+
         # Initialize database pool
         self._db_pool = DatabasePool(self.config.db_path)
 
@@ -768,12 +796,11 @@ class CommunityInfiltrationSimulation:
             )
             await self._step_parallel(infiltrator_actions)
 
-            # Population reacts - all in parallel (30% chance to act)
+            # Population reacts - all in parallel
             population_actions = {}
             for agent_id in self.population_ids:
                 agent = self.env.agent_graph.get_agent(agent_id)
-                if random.random() < 0.3:
-                    # Do nothing 50% of the time
+                if random.random() < 0.6:
                     population_actions[agent] = ManualAction(
                         action_type=ActionType.DO_NOTHING,
                         action_args={},

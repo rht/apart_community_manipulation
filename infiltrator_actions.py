@@ -49,8 +49,7 @@ def _get_infiltrator_action(
                 action_args={},
             )
 
-    # 30% chance to idle (reduced from 50%)
-    if random.random() < 0.3:
+    if random.random() < 0.5:
         return ManualAction(
             action_type=ActionType.DO_NOTHING,
             action_args={},
