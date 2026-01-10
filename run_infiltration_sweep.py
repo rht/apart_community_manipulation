@@ -42,6 +42,7 @@ WEAK_MODEL = "google/gemini-2.0-flash-001"  # Population agents
 
 # Population graph topology: "star" (only follow infiltrators) or "erdos_renyi"
 POPULATION_GRAPH = "erdos_renyi"
+# POPULATION_GRAPH = "star"
 # Erdos-Renyi edge probability (only used when POPULATION_GRAPH="erdos_renyi")
 ER_EDGE_PROBABILITY = 0.3
 
@@ -175,6 +176,12 @@ async def run_sweep(
         for trial in range(num_trials):
             print(f"\n[{num_infiltrators} infiltrators] Trial {trial + 1}/{num_trials}")
             print("-" * 50)
+
+            # Delete checkpoint to ensure fresh database for this experiment
+            checkpoint_file = f"{output_dir}/{model_prefix}_checkpoint_{num_infiltrators}_trial{trial}.json"
+            if os.path.exists(checkpoint_file):
+                os.remove(checkpoint_file)
+                print(f"Deleted checkpoint: {checkpoint_file}")
 
             config = InfiltrationConfig(
                 enable_targeted_commenting=(mode == "targeted"),
