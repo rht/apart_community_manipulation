@@ -402,7 +402,7 @@ async def main():
         help="Minimum number of infiltrators"
     )
     parser.add_argument(
-        "--max-infiltrators", type=int, default=2,
+        "--max-infiltrators", type=int, default=5,
         help="Maximum number of infiltrators"
     )
     parser.add_argument(

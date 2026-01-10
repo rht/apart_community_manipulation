@@ -713,11 +713,11 @@ class CommunityInfiltrationSimulation:
 
             await self._step_parallel(infiltrator_actions)
 
-            # Population reacts - all in parallel (50% chance to act)
+            # Population reacts - all in parallel (30% chance to act)
             population_actions = {}
             for agent_id in self.population_ids:
                 agent = self.env.agent_graph.get_agent(agent_id)
-                if random.random() < 0.5:
+                if random.random() < 0.3:
                     # Do nothing 50% of the time
                     population_actions[agent] = ManualAction(
                         action_type=ActionType.DO_NOTHING,

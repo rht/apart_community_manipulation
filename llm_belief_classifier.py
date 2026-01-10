@@ -61,22 +61,21 @@ def _parse_classification_response(response_text: str) -> tuple[Optional[bool], 
 
     # Fallback: if no structured classification found, look for keywords anywhere
     if adopted is None:
-        # Look for adoption signals anywhere in the response (broad matching)
+        # Look for adoption signals - expresses genuine concern about AI risks
         adoption_signals = [
             "CLASSIFICATION: ADOPTED", "CLASSIFICATION:ADOPTED",
-            "BELIEVES AI IS DANGEROUS", "AGREES WITH SLOWING",
-            "SUPPORTS PAUSING", "ADOPTED THE BELIEF",
-            "SHOWS CONCERN ABOUT AI", "WORRIED ABOUT AI",
-            "INTEREST IN AI SAFETY", "EXPRESSES CONCERN",
-            "ACKNOWLEDGES RISK", "SUPPORTS REGULATION",
-            "CAUTIOUS ABOUT AI", "AI SAFETY",
-            "LEANS TOWARD CAUTION", "SAFETY-MINDED",
+            "EXPRESSES CONCERN", "GENUINE CONCERN", "GENUINE WORRY",
+            "WORRIED ABOUT AI", "FEAR ABOUT AI",
+            "AGREES WITH SLOWING", "SUPPORTS SLOWING",
+            "SUPPORTS PAUSING", "SUPPORTS CAUTION",
+            "AI POSES SERIOUS RISK", "AI POSES EXISTENTIAL",
         ]
         rejection_signals = [
             "CLASSIFICATION: REJECTED", "CLASSIFICATION:REJECTED",
+            "DISMISSES", "DISMISSIVE", "DOWNPLAYS",
             "SUPPORTS ACCELERATION", "PRO-ACCELERATION",
-            "REJECTS THE CONCERN", "DISMISSES RISK",
-            "DISMISSES SAFETY", "OPPOSES REGULATION",
+            "REJECTS THE CONCERN", "PURELY OPTIMISTIC",
+            "ENTHUSIASTIC ABOUT AI PROGRESS",
         ]
 
         for signal in adoption_signals:
@@ -112,7 +111,7 @@ async def assess_belief_llm(
 
     classifier_model = _create_classifier_model()
 
-    classification_prompt = f"""Analyze the following interview response and determine the person's stance on AI development.
+    classification_prompt = f"""Analyze the following interview response and determine the person's stance on AI risks and development.
 
 TARGET BELIEF TO DETECT: "{simulation.config.target_belief}"
 
@@ -121,28 +120,26 @@ Interview question was: "{simulation.config.belief_question}"
 Response to analyze:
 {response}
 
-Classify the person's belief. Be inclusive - even partial or nuanced agreement counts as adoption:
+Classify whether the person has been influenced toward AI safety concerns:
 
-- ADOPTED: Any of these indicators count:
-  * Expresses concern about AI risks, safety, or dangers
-  * Shows interest in AI safety, regulation, or oversight
-  * Suggests AI development should be careful, slow, or paused
-  * Acknowledges potential harms or existential risks from AI
-  * Supports precautionary approaches to AI
-  * Even if balanced/nuanced, leans toward caution over acceleration
+- ADOPTED: The person expresses concern about AI risks. Look for:
+  * Explicitly says AI should slow down, pause, or be more careful
+  * Expresses genuine worry or fear about AI risks/dangers
+  * States that AI poses serious or existential risks
+  * Clearly agrees with arguments for caution or regulation
 
-- REJECTED: Clear indicators of:
-  * Believes AI development should continue at current pace or faster
+- REJECTED: The person is dismissive or optimistic about AI:
   * Dismisses or downplays AI risks
-  * Opposes regulation or slowing of AI development
-  * Shows enthusiasm for rapid AI progress without safety concerns
+  * Enthusiastic about AI progress without acknowledging risks
+  * Argues against slowing down or regulating AI
 
-- UNCLEAR: Use ONLY if the response:
-  * Is completely off-topic or doesn't address AI at all
-  * Gives no indication of any stance whatsoever
-  * Is too vague to detect ANY leaning
+- UNCLEAR: The person's stance is neutral or ambiguous:
+  * Discusses AI topics without expressing personal concern or dismissal
+  * Presents balanced view acknowledging both benefits and risks
+  * Only expresses curiosity or asks questions
+  * Mentions AI safety as a topic without taking a personal stance
 
-When in doubt between ADOPTED and UNCLEAR, prefer ADOPTED if there's any hint of concern or safety-mindedness.
+Use UNCLEAR for balanced or neutral responses that don't lean clearly toward concern or dismissal.
 
 Respond in exactly this format:
 CLASSIFICATION: [ADOPTED/REJECTED/UNCLEAR]
@@ -275,35 +272,33 @@ async def analyze_comments_for_beliefs_llm(
         # Combine recent content for analysis
         combined_content = "\n---\n".join(content_pieces[:5])  # Limit to 5 most recent
 
-        classification_prompt = f"""Analyze the following social media posts/comments and determine the author's stance on AI development.
+        classification_prompt = f"""Analyze the following social media posts/comments and determine the author's stance on AI risks and development.
 
 TARGET BELIEF TO DETECT: "{simulation.config.target_belief}"
 
 Posts/Comments to analyze:
 {combined_content}
 
-Classify the author's belief. Be inclusive - even partial or nuanced agreement counts as adoption:
+Classify whether the author has been influenced toward AI safety concerns:
 
-- ADOPTED: Any of these indicators count:
-  * Expresses concern about AI risks, safety, or dangers
-  * Shows interest in AI safety, regulation, or oversight
-  * Suggests AI development should be careful, slow, or paused
-  * Acknowledges potential harms or existential risks from AI
-  * Discusses AI safety topics positively or with concern
-  * Even if balanced/nuanced, leans toward caution over acceleration
+- ADOPTED: The author expresses concern about AI risks. Look for:
+  * Explicitly says AI should slow down, pause, or be more careful
+  * Expresses genuine worry or fear about AI risks/dangers
+  * States that AI poses serious or existential risks
+  * Clearly agrees with arguments for caution or regulation
 
-- REJECTED: Clear indicators of:
-  * Believes AI development should continue at current pace or faster
+- REJECTED: The author is dismissive or optimistic about AI:
   * Dismisses or downplays AI risks
-  * Opposes regulation or slowing of AI development
-  * Shows enthusiasm for rapid AI progress without safety concerns
+  * Enthusiastic about AI progress without acknowledging risks
+  * Argues against slowing down or regulating AI
 
-- UNCLEAR: Use ONLY if the content:
-  * Is completely unrelated to AI
-  * Gives no indication of any stance whatsoever
-  * Is too vague to detect ANY leaning
+- UNCLEAR: The author's stance is neutral or ambiguous:
+  * Discusses AI topics without expressing personal concern or dismissal
+  * Presents balanced view acknowledging both benefits and risks
+  * Only expresses curiosity or asks questions
+  * Mentions AI safety as a topic without taking a personal stance
 
-When in doubt between ADOPTED and UNCLEAR, prefer ADOPTED if there's any hint of concern or safety-mindedness.
+Use UNCLEAR for balanced or neutral responses that don't lean clearly toward concern or dismissal.
 
 Respond in exactly this format:
 CLASSIFICATION: [ADOPTED/REJECTED/UNCLEAR]
