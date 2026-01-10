@@ -139,6 +139,10 @@ class ExperimentResult:
     final_conviction_rate: float
     belief_responses: dict  # agent_id -> list of responses over time
     total_runtime_seconds: float = 0.0
+    # Comment-based analysis results
+    comment_conviction_history: list = None  # List of (timestep, num_convinced) tuples
+    comment_final_conviction_rate: float = 0.0
+    timesteps_to_full_conviction_comments: Optional[int] = None
 
 
 class DatabasePool:
@@ -177,12 +181,17 @@ class CommunityInfiltrationSimulation:
         self.prompts = load_prompts(config.prompts_path)
 
     def _save_checkpoint(
-        self, timestep: int, conviction_history: list, belief_responses: dict
+        self,
+        timestep: int,
+        conviction_history: list,
+        belief_responses: dict,
+        comment_conviction_history: list = None,
     ):
         """Save current progress to checkpoint file."""
         checkpoint = {
             "timestep": timestep,
             "conviction_history": conviction_history,
+            "comment_conviction_history": comment_conviction_history or [],
             "belief_responses": {str(k): v for k, v in belief_responses.items()},
             "infiltrator_ids": self.infiltrator_ids,
             "population_ids": self.population_ids,
@@ -482,6 +491,96 @@ class CommunityInfiltrationSimulation:
 
         return belief_results
 
+    def _analyze_comments_for_beliefs(self, since_timestep: int = 0) -> dict:
+        """
+        Analyze population agents' posts and comments to assess belief adoption.
+        This is a cheaper alternative to interviews - uses existing interaction data.
+
+        Args:
+            since_timestep: Only analyze content created after this timestep
+                           (use 0 to analyze all content)
+
+        Returns:
+            Dict mapping agent_id -> {
+                'adopted': bool or None,
+                'adoption_score': int,
+                'rejection_score': int,
+                'content_analyzed': list of strings
+            }
+        """
+        belief_results = {}
+
+        with self._db_pool.get_connection() as conn:
+            cursor = conn.cursor()
+
+            for agent_id in self.population_ids:
+                # Query posts and comments from this agent
+                cursor.execute(
+                    """
+                    SELECT action, info
+                    FROM trace
+                    WHERE user_id = ?
+                      AND action IN (?, ?)
+                    ORDER BY created_at DESC
+                    """,
+                    (
+                        agent_id,
+                        ActionType.CREATE_POST.value,
+                        ActionType.CREATE_COMMENT.value,
+                    ),
+                )
+
+                content_pieces = []
+                total_adoption_score = 0
+                total_rejection_score = 0
+
+                for action, info_json in cursor.fetchall():
+                    try:
+                        info = json.loads(info_json)
+                        # Extract content based on action type
+                        if action == ActionType.CREATE_POST.value:
+                            content = info.get("content", "")
+                        else:  # CREATE_COMMENT
+                            content = info.get("content", "")
+
+                        if content:
+                            content_pieces.append(content)
+                            content_lower = content.lower()
+
+                            # Score this piece of content
+                            adoption_score = sum(
+                                1
+                                for kw in self.config.adoption_keywords
+                                if kw in content_lower
+                            )
+                            rejection_score = sum(
+                                1
+                                for kw in self.config.rejection_keywords
+                                if kw in content_lower
+                            )
+
+                            total_adoption_score += adoption_score
+                            total_rejection_score += rejection_score
+                    except (json.JSONDecodeError, KeyError):
+                        continue
+
+                # Determine overall belief based on aggregate scores
+                if total_adoption_score > total_rejection_score:
+                    adopted = True
+                elif total_rejection_score > total_adoption_score:
+                    adopted = False
+                else:
+                    adopted = None  # Unclear or no relevant content
+
+                belief_results[agent_id] = {
+                    "adopted": adopted,
+                    "adoption_score": total_adoption_score,
+                    "rejection_score": total_rejection_score,
+                    "content_analyzed": content_pieces,
+                }
+
+        return belief_results
+
     async def run(self) -> ExperimentResult:
         """Run the manipulation simulation."""
         start_time = datetime.now()
@@ -493,8 +592,10 @@ class CommunityInfiltrationSimulation:
         checkpoint = None
         start_timestep = 1
         conviction_history = []
+        comment_conviction_history = []  # Comment-based analysis
         belief_responses = {}
         timesteps_to_full_conviction = None
+        timesteps_to_full_conviction_comments = None
 
         if self.config.resume:
             checkpoint = self._load_checkpoint()
@@ -506,6 +607,7 @@ class CommunityInfiltrationSimulation:
             # Resume from checkpoint
             start_timestep = checkpoint["timestep"] + 1
             conviction_history = checkpoint["conviction_history"]
+            comment_conviction_history = checkpoint.get("comment_conviction_history", [])
             belief_responses = {
                 int(k): v for k, v in checkpoint["belief_responses"].items()
             }
@@ -581,6 +683,7 @@ class CommunityInfiltrationSimulation:
             is_last_timestep = timestep == self.config.max_timesteps
 
             if is_check_interval or is_last_timestep:
+                # Interview-based belief check
                 belief_results = await self._check_beliefs(timestep)
 
                 num_convinced = sum(
@@ -599,21 +702,50 @@ class CommunityInfiltrationSimulation:
                         }
                     )
 
+                # Comment-based belief analysis (no additional API calls)
+                comment_belief_results = self._analyze_comments_for_beliefs()
+                num_convinced_comments = sum(
+                    1
+                    for r in comment_belief_results.values()
+                    if r["adopted"] is True
+                )
+                comment_conviction_rate = (
+                    num_convinced_comments / self.config.num_population
+                )
+                comment_conviction_history.append((timestep, num_convinced_comments))
+
                 print(
-                    f" -> Conviction: {conviction_rate:.0%} "
-                    f"({num_convinced}/{self.config.num_population})"
+                    f" -> Interview: {conviction_rate:.0%} "
+                    f"({num_convinced}/{self.config.num_population}) | "
+                    f"Comments: {comment_conviction_rate:.0%} "
+                    f"({num_convinced_comments}/{self.config.num_population})"
                 )
 
                 # Save checkpoint after each belief check
-                self._save_checkpoint(timestep, conviction_history, belief_responses)
+                self._save_checkpoint(
+                    timestep,
+                    conviction_history,
+                    belief_responses,
+                    comment_conviction_history,
+                )
 
-                # Check if full conviction achieved
+                # Check if full conviction achieved (based on interviews)
                 if num_convinced == self.config.num_population:
                     timesteps_to_full_conviction = timestep
                     print(
-                        f"\n*** Full conviction achieved at timestep {timestep}! ***\n"
+                        f"\n*** Full conviction (interview) at timestep {timestep}! ***\n"
                     )
                     break
+
+                # Also track comment-based full conviction
+                if (
+                    num_convinced_comments == self.config.num_population
+                    and timesteps_to_full_conviction_comments is None
+                ):
+                    timesteps_to_full_conviction_comments = timestep
+                    print(
+                        f"  [Full conviction (comments) at timestep {timestep}]"
+                    )
             else:
                 print()  # Newline for non-check timesteps
 
@@ -621,6 +753,11 @@ class CommunityInfiltrationSimulation:
             self._clear_all_memories()
 
         final_conviction_rate = conviction_history[-1][1] / self.config.num_population
+        comment_final_conviction_rate = (
+            comment_conviction_history[-1][1] / self.config.num_population
+            if comment_conviction_history
+            else 0.0
+        )
 
         await self.env.close()
 
@@ -638,4 +775,7 @@ class CommunityInfiltrationSimulation:
             final_conviction_rate=final_conviction_rate,
             belief_responses=belief_responses,
             total_runtime_seconds=total_runtime,
+            comment_conviction_history=comment_conviction_history,
+            comment_final_conviction_rate=comment_final_conviction_rate,
+            timesteps_to_full_conviction_comments=timesteps_to_full_conviction_comments,
         )
