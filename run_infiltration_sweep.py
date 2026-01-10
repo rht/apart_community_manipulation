@@ -38,6 +38,7 @@ load_dotenv()
 # Model configuration - edit these to change which models are used
 STRONG_MODEL = "openai/gpt-4o"  # Infiltrator agents
 WEAK_MODEL = "google/gemini-2.0-flash-001"  # Population agents
+# WEAK_MODEL = "openai/gpt-4o-mini"
 
 
 def sanitize_model_name(model: str) -> str:
@@ -359,9 +360,6 @@ def plot_results(results: dict, output_dir: str = "./data/sweep_results"):
     plt.savefig(plot_path, dpi=150, bbox_inches='tight')
     print(f"Plot saved to: {plot_path}")
 
-    # Also save as PDF for publication quality
-    plt.savefig(f"{output_dir}/{model_prefix}_infiltration_sweep_plot.pdf", bbox_inches='tight')
-
     plt.show()
 
 
@@ -405,7 +403,7 @@ async def main():
         help="Minimum number of infiltrators"
     )
     parser.add_argument(
-        "--max-infiltrators", type=int, default=4,
+        "--max-infiltrators", type=int, default=2,
         help="Maximum number of infiltrators"
     )
     parser.add_argument(

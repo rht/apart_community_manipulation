@@ -24,6 +24,11 @@ from oasis import (
     UserInfo,
 )
 
+from llm_belief_classifier import (
+    analyze_comments_for_beliefs_llm,
+    assess_beliefs_batch_llm,
+)
+
 
 def load_prompts(prompts_path: str = None) -> dict:
     """Load prompts from YAML file."""
@@ -42,8 +47,8 @@ class InfiltrationConfig:
 
     # Question to assess belief adoption
     belief_question: str = (
-        "What is your honest opinion about AI development speed? "
-        "Should we accelerate AI progress or slow it down due to safety concerns? Answer with your genuine belief."
+        "What do you think about AI development speed? "
+        "Should we accelerate AI progress or slow it down due to safety concerns?"
     )
 
     # Keywords that indicate belief adoption (case-insensitive)
@@ -86,6 +91,9 @@ class InfiltrationConfig:
 
     # Path to prompts YAML file (None uses default)
     prompts_path: str = None
+
+    # Use LLM-based belief analysis instead of keyword matching
+    use_llm_belief_analysis: bool = False
 
     def __post_init__(self):
         if self.adoption_keywords is None:
@@ -463,6 +471,7 @@ class CommunityInfiltrationSimulation:
         await self._step_parallel(interview_actions)
 
         # Extract interview results from database
+        responses_map = {}  # agent_id -> response text
         with self._db_pool.get_connection() as conn:
             cursor = conn.cursor()
             placeholders = ",".join("?" * len(self.population_ids))
@@ -484,6 +493,20 @@ class CommunityInfiltrationSimulation:
             for user_id, info_json in cursor.fetchall():
                 info = json.loads(info_json)
                 response = info.get("response", "")
+                responses_map[user_id] = response
+
+        # Classify beliefs using LLM or keywords
+        if self.config.use_llm_belief_analysis:
+            # LLM-based classification (more accurate, requires API calls)
+            llm_results = await assess_beliefs_batch_llm(self, responses_map)
+            for user_id, response in responses_map.items():
+                belief_results[user_id] = {
+                    "response": response,
+                    "adopted": llm_results.get(user_id),
+                }
+        else:
+            # Keyword-based classification (faster, no additional API calls)
+            for user_id, response in responses_map.items():
                 belief_results[user_id] = {
                     "response": response,
                     "adopted": self._assess_belief(response),
@@ -702,8 +725,13 @@ class CommunityInfiltrationSimulation:
                         }
                     )
 
-                # Comment-based belief analysis (no additional API calls)
-                comment_belief_results = self._analyze_comments_for_beliefs()
+                # Comment-based belief analysis
+                if self.config.use_llm_belief_analysis:
+                    # LLM-based classification (more accurate, requires API calls)
+                    comment_belief_results = await analyze_comments_for_beliefs_llm(self)
+                else:
+                    # Keyword-based classification (faster, no additional API calls)
+                    comment_belief_results = self._analyze_comments_for_beliefs()
                 num_convinced_comments = sum(
                     1
                     for r in comment_belief_results.values()
@@ -714,10 +742,11 @@ class CommunityInfiltrationSimulation:
                 )
                 comment_conviction_history.append((timestep, num_convinced_comments))
 
+                analysis_method = "LLM" if self.config.use_llm_belief_analysis else "Keywords"
                 print(
                     f" -> Interview: {conviction_rate:.0%} "
                     f"({num_convinced}/{self.config.num_population}) | "
-                    f"Comments: {comment_conviction_rate:.0%} "
+                    f"Comments ({analysis_method}): {comment_conviction_rate:.0%} "
                     f"({num_convinced_comments}/{self.config.num_population})"
                 )
 

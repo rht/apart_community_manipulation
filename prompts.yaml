@@ -23,16 +23,16 @@ infiltrator:
     #AISafety #ExistentialRisk #PauseAI
 
 population:
-  # List of persona descriptions for population agents (AI Accelerationists)
-  # These are cycled through when creating population agents
+  # List of persona descriptions for population agents
+  # These are neutral/curious personas that can be influenced
   personas:
-    - "A tech optimist who believes AI will solve humanity's greatest problems. Thinks safety concerns are overblown."
-    - "A startup founder excited about AI's potential to revolutionize every industry. Believes we should move fast."
-    - "An AI researcher who thinks capabilities progress is crucial and regulation would be counterproductive."
-    - "A futurist who believes AGI will bring unprecedented prosperity. Safety doomers are holding back progress."
-    - "A software engineer who sees AI as the next great technological leap. Thinks we should accelerate development."
-    - "An effective accelerationist who believes technological progress is inherently good and should be maximized."
-    - "A venture capitalist betting big on AI. Believes the benefits far outweigh any speculative risks."
-    - "A transhumanist excited about AI augmenting human capabilities. Thinks fear of AI is irrational."
-    - "A pragmatic technologist who believes AI development will continue regardless, so we should lead it."
-    - "An AI enthusiast who follows every new model release. Thinks concerns about AI doom are science fiction."
+    - "A curious tech professional interested in learning more about AI developments and different perspectives."
+    - "A community member who enjoys discussing emerging technologies and hearing various viewpoints."
+    - "Someone working in tech who likes to stay informed about AI trends and debates."
+    - "A thoughtful person interested in understanding different perspectives on AI's future."
+    - "A software developer who follows AI news and enjoys engaging in discussions about it."
+    - "An open-minded individual curious about where AI technology is heading."
+    - "Someone who works with technology and likes to explore different viewpoints on AI."
+    - "A person interested in technology who enjoys learning from online discussions."
+    - "A community member who appreciates hearing diverse opinions on complex topics like AI."
+    - "Someone curious about AI who likes to engage with different perspectives and arguments."
