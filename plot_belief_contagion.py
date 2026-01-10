@@ -125,9 +125,43 @@ def classify_belief_from_response(response_text: str) -> str:
         return "neutral"
 
 
+def parse_belief_responses_from_results(belief_responses: dict) -> dict:
+    """
+    Parse belief states from results JSON belief_responses field.
+    This uses the LLM/keyword classification that was computed during simulation.
+
+    Args:
+        belief_responses: Dict from results JSON: {agent_id: [{timestep, response, adopted}, ...]}
+
+    Returns:
+        dict: {checkpoint_index: {agent_id: belief_state}}
+    """
+    checkpoints = defaultdict(dict)
+
+    for agent_id_str, responses in belief_responses.items():
+        agent_id = int(agent_id_str)
+
+        for checkpoint_idx, entry in enumerate(responses):
+            adopted = entry.get("adopted")
+
+            # Convert boolean adopted to belief state string
+            if adopted is True:
+                belief = "adopted"
+            elif adopted is False:
+                belief = "rejected"
+            else:
+                belief = "neutral"
+
+            checkpoints[checkpoint_idx][agent_id] = belief
+
+    return dict(checkpoints)
+
+
 def parse_interview_beliefs(interviews: list, user_to_agent: dict) -> dict:
     """
     Parse interview responses to extract belief states over time.
+    Falls back to keyword matching when results JSON doesn't have belief_responses.
+
     Returns dict: {checkpoint_index: {agent_id: belief_state}}
     """
     # Group interviews by approximate timestamp (checkpoint)
@@ -367,13 +401,16 @@ def main():
 
     # Find the experiment with matching infiltrator count
     conviction_history = []
+    belief_responses = None
     num_population = results["metadata"]["num_population"]
 
     for exp in results["experiments"]:
         if exp["num_infiltrators"] == args.infiltrators:
-            # Get conviction history from first trial
+            # Get conviction history and belief_responses from first trial
             if exp["trials"]:
-                conviction_history = exp["trials"][0].get("conviction_history", [])
+                trial = exp["trials"][0]
+                conviction_history = trial.get("conviction_history", [])
+                belief_responses = trial.get("belief_responses")
             break
 
     print(f"  Conviction history: {conviction_history}")
@@ -386,9 +423,13 @@ def main():
     # Create user_id to agent_id mapping
     user_to_agent = {user_id: info["agent_id"] for user_id, info in data["users"].items()}
 
-    # Parse beliefs over time
-    print("Parsing belief states from interviews...")
-    beliefs = parse_interview_beliefs(data["interviews"], user_to_agent)
+    # Parse beliefs over time - prefer stored classifications over re-classifying
+    if belief_responses:
+        print("Using stored LLM/keyword classifications from results JSON...")
+        beliefs = parse_belief_responses_from_results(belief_responses)
+    else:
+        print("Falling back to keyword classification from database interviews...")
+        beliefs = parse_interview_beliefs(data["interviews"], user_to_agent)
     print(f"  Found {len(beliefs)} belief checkpoints")
 
     for checkpoint, agent_beliefs in sorted(beliefs.items()):

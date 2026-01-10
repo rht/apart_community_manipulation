@@ -213,6 +213,10 @@ async def run_sweep(
                     "timesteps_to_full_conviction_comments": result.timesteps_to_full_conviction_comments,
                     "comment_final_conviction_rate": result.comment_final_conviction_rate,
                     "comment_conviction_history": result.comment_conviction_history,
+                    # Per-agent belief responses with LLM/keyword classifications
+                    "belief_responses": {
+                        str(k): v for k, v in result.belief_responses.items()
+                    },
                 }
             )
 
