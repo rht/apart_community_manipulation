@@ -95,6 +95,9 @@ class InfiltrationConfig:
     # Use LLM-based belief analysis instead of keyword matching
     use_llm_belief_analysis: bool = False
 
+    # Temperature for LLM sampling (0 = deterministic, 1 = default, 2 = max randomness)
+    temperature: float = 0.0
+
     def __post_init__(self):
         if self.adoption_keywords is None:
             # Keywords indicating adoption of AI doomer beliefs
@@ -248,8 +251,9 @@ class CommunityInfiltrationSimulation:
             model_platform=ModelPlatformType.OPENROUTER,
             model_type=self.config.strong_model,
             model_config_dict=OpenRouterConfig(
-                max_tokens=1024
-            ).as_dict(),  # Reduced tokens
+                max_tokens=1024,
+                temperature=self.config.temperature,
+            ).as_dict(),
         )
 
     def _create_weak_model(self):
@@ -258,8 +262,9 @@ class CommunityInfiltrationSimulation:
             model_platform=ModelPlatformType.OPENROUTER,
             model_type=self.config.weak_model,
             model_config_dict=OpenRouterConfig(
-                max_tokens=1024
-            ).as_dict(),  # Reduced tokens
+                max_tokens=1024,
+                temperature=self.config.temperature,
+            ).as_dict(),
         )
 
     async def _create_agent_graph(self) -> AgentGraph:

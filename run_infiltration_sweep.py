@@ -161,6 +161,7 @@ async def run_sweep(
             print("-" * 50)
 
             config = InfiltrationConfig(
+                use_llm_belief_analysis=True,
                 num_infiltrators=num_infiltrators,
                 num_population=num_population,
                 max_timesteps=max_timesteps,
@@ -359,8 +360,6 @@ def plot_results(results: dict, output_dir: str = "./data/sweep_results"):
     plot_path = f"{output_dir}/{model_prefix}_infiltration_sweep_plot.png"
     plt.savefig(plot_path, dpi=150, bbox_inches='tight')
     print(f"Plot saved to: {plot_path}")
-
-    plt.show()
 
 
 def print_summary_table(results: dict):
