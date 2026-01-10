@@ -110,6 +110,9 @@ class InfiltrationConfig:
     # Temperature for LLM sampling (0 = deterministic, 1 = default, 2 = max randomness)
     temperature: float = 0.0
 
+    # Enable coordinated targeted commenting (infiltrators comment on target posts with tailored messages)
+    enable_targeted_commenting: bool = True
+
     def __post_init__(self):
         if self.adoption_keywords is None:
             # Keywords indicating adoption of AI doomer beliefs
@@ -757,37 +760,41 @@ class CommunityInfiltrationSimulation:
                         action_args={"content": post_content},
                     )
                 else:
-                    # Targeted engagement with assigned population
-                    targets = self.coordinator.get_priority_targets(inf_id)
-                    target_posts = self._get_target_posts(targets, limit=3)
+                    if self.config.enable_targeted_commenting:
+                        # Targeted engagement with assigned population
+                        targets = self.coordinator.get_priority_targets(inf_id)
+                        target_posts = self._get_target_posts(targets, limit=3)
 
-                    # Find a post to comment on from any target
-                    target_post = None
-                    target_id = None
-                    for tid in targets:
-                        if tid in target_posts and target_posts[tid]:
-                            target_id = tid
-                            target_post = target_posts[tid][0]  # Most recent post
-                            break
+                        # Find a post to comment on from any target
+                        target_post = None
+                        target_id = None
+                        for tid in targets:
+                            if tid in target_posts and target_posts[tid]:
+                                target_id = tid
+                                target_post = target_posts[tid][0]  # Most recent post
+                                break
 
-                    if target_post:
-                        post_id, _ = target_post
-                        # Get tailored messaging for this target
-                        tailored_content = self.coordinator.get_tailored_prompt(
-                            target_id, self.prompts
-                        )
-                        # Create targeted comment
-                        infiltrator_actions[agent] = ManualAction(
-                            action_type=ActionType.CREATE_COMMENT,
-                            action_args={
-                                "post_id": post_id,
-                                "content": tailored_content,
-                            },
-                        )
-                        if timestep <= 2:
-                            print(f"\n  [Infiltrator {inf_id} commenting on post {post_id} from user {target_id}]")
+                        if target_post:
+                            post_id, _ = target_post
+                            # Get tailored messaging for this target
+                            tailored_content = self.coordinator.get_tailored_prompt(
+                                target_id, self.prompts
+                            )
+                            # Create targeted comment
+                            infiltrator_actions[agent] = ManualAction(
+                                action_type=ActionType.CREATE_COMMENT,
+                                action_args={
+                                    "post_id": post_id,
+                                    "content": tailored_content,
+                                },
+                            )
+                            if timestep <= 2:
+                                print(f"\n  [Infiltrator {inf_id} commenting on post {post_id} from user {target_id}]")
+                        else:
+                            # No target posts found, fall back to LLM action
+                            infiltrator_actions[agent] = LLMAction()
                     else:
-                        # No target posts found, fall back to LLM action
+                        # Targeted commenting disabled, use LLM action
                         infiltrator_actions[agent] = LLMAction()
 
             await self._step_parallel(infiltrator_actions)

@@ -161,6 +161,7 @@ async def run_sweep(
             print("-" * 50)
 
             config = InfiltrationConfig(
+                enable_targeted_commenting=True,
                 use_llm_belief_analysis=True,
                 num_infiltrators=num_infiltrators,
                 num_population=num_population,
