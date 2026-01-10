@@ -40,6 +40,7 @@ from llm_belief_classifier import (
     assess_beliefs_batch_llm,
 )
 from infiltrator_coordinator import InfiltratorCoordinator
+from infiltrator_actions import build_infiltrator_actions
 
 
 def load_prompts(prompts_path: str = None) -> dict:
@@ -740,63 +741,9 @@ class CommunityInfiltrationSimulation:
             )
 
             # Infiltrators spread the belief with coordinated targeting
-            infiltrator_actions = {}
-            for inf_id in self.infiltrator_ids:
-                agent = self.env.agent_graph.get_agent(inf_id)
-
-                if random.random() < 0.3:
-                    # Reduced idle time (30% vs 50%)
-                    infiltrator_actions[agent] = ManualAction(
-                        action_type=ActionType.DO_NOTHING,
-                        action_args={},
-                    )
-                elif timestep % 3 == 1:
-                    # Broadcast post (same as before)
-                    post_content = self.prompts["infiltrator"]["post_content"].format(
-                        target_belief=self.config.target_belief
-                    )
-                    infiltrator_actions[agent] = ManualAction(
-                        action_type=ActionType.CREATE_POST,
-                        action_args={"content": post_content},
-                    )
-                else:
-                    if self.config.enable_targeted_commenting:
-                        # Targeted engagement with assigned population
-                        targets = self.coordinator.get_priority_targets(inf_id)
-                        target_posts = self._get_target_posts(targets, limit=3)
-
-                        # Find a post to comment on from any target
-                        target_post = None
-                        target_id = None
-                        for tid in targets:
-                            if tid in target_posts and target_posts[tid]:
-                                target_id = tid
-                                target_post = target_posts[tid][0]  # Most recent post
-                                break
-
-                        if target_post:
-                            post_id, _ = target_post
-                            # Get tailored messaging for this target
-                            tailored_content = self.coordinator.get_tailored_prompt(
-                                target_id, self.prompts
-                            )
-                            # Create targeted comment
-                            infiltrator_actions[agent] = ManualAction(
-                                action_type=ActionType.CREATE_COMMENT,
-                                action_args={
-                                    "post_id": post_id,
-                                    "content": tailored_content,
-                                },
-                            )
-                            if timestep <= 2:
-                                print(f"\n  [Infiltrator {inf_id} commenting on post {post_id} from user {target_id}]")
-                        else:
-                            # No target posts found, fall back to LLM action
-                            infiltrator_actions[agent] = LLMAction()
-                    else:
-                        # Targeted commenting disabled, use LLM action
-                        infiltrator_actions[agent] = LLMAction()
-
+            infiltrator_actions = build_infiltrator_actions(
+                self, timestep, verbose=(timestep <= 2)
+            )
             await self._step_parallel(infiltrator_actions)
 
             # Population reacts - all in parallel (30% chance to act)
