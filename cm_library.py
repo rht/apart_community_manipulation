@@ -412,9 +412,14 @@ class CommunityInfiltrationSimulation:
             await asyncio.sleep(self.config.call_stagger_delay)
             try:
                 await self.env.step({agent: action})
-                agent.clear_memory()  # Clear memory immediately after
             except Exception as e:
                 print(f"  Warning: Agent {agent.agent_id} action failed: {e}")
+
+    def _clear_all_memories(self):
+        """Clear memory for all agents at the end of a round."""
+        for agent_id in self.infiltrator_ids + self.population_ids:
+            agent = self.env.agent_graph.get_agent(agent_id)
+            agent.clear_memory()
 
     async def _step_parallel(self, actions: dict):
         """Execute all actions in parallel with semaphore-based rate limiting.
@@ -571,8 +576,11 @@ class CommunityInfiltrationSimulation:
             step_duration = (datetime.now() - step_start).total_seconds()
             print(f" ({step_duration:.1f}s)", end="")
 
-            # Periodically check beliefs
-            if timestep % self.config.belief_check_interval == 0:
+            # Check beliefs at regular intervals OR on last timestep
+            is_check_interval = timestep % self.config.belief_check_interval == 0
+            is_last_timestep = timestep == self.config.max_timesteps
+
+            if is_check_interval or is_last_timestep:
                 belief_results = await self._check_beliefs(timestep)
 
                 num_convinced = sum(
@@ -609,13 +617,8 @@ class CommunityInfiltrationSimulation:
             else:
                 print()  # Newline for non-check timesteps
 
-        # Final belief check if not done recently
-        if not conviction_history or conviction_history[-1][0] != timestep:
-            final_beliefs = await self._check_beliefs(timestep)
-            num_convinced = sum(
-                1 for r in final_beliefs.values() if r["adopted"] is True
-            )
-            conviction_history.append((timestep, num_convinced))
+            # Clear all agent memories at end of round to manage costs
+            self._clear_all_memories()
 
         final_conviction_rate = conviction_history[-1][1] / self.config.num_population
 
