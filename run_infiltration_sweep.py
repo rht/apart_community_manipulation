@@ -103,7 +103,9 @@ async def run_sweep(
     infiltrator_counts = list(range(min_infiltrators, max_infiltrators + 1, step))
 
     # Try to load existing results
-    existing_results = None if force_rerun else load_existing_results(output_dir, model_prefix)
+    existing_results = (
+        None if force_rerun else load_existing_results(output_dir, model_prefix)
+    )
     existing_experiments = {}
     if existing_results:
         for exp in existing_results.get("experiments", []):
@@ -131,10 +133,12 @@ async def run_sweep(
         if num_infiltrators in existing_experiments:
             existing_exp = existing_experiments[num_infiltrators]
             # Check if the existing experiment has the same parameters
-            if (existing_results and
-                existing_results["metadata"].get("num_population") == num_population and
-                existing_results["metadata"].get("max_timesteps") == max_timesteps and
-                existing_results["metadata"].get("num_trials") == num_trials):
+            if (
+                existing_results
+                and existing_results["metadata"].get("num_population") == num_population
+                and existing_results["metadata"].get("max_timesteps") == max_timesteps
+                and existing_results["metadata"].get("num_trials") == num_trials
+            ):
                 counts_skipped.append(num_infiltrators)
                 results["experiments"].append(existing_exp)
             else:
@@ -181,45 +185,54 @@ async def run_sweep(
             sim = CommunityInfiltrationSimulation(config)
             result = await sim.run()
 
-            trial_results.append({
-                "trial": trial,
-                "timesteps_to_full_conviction": result.timesteps_to_full_conviction,
-                "final_conviction_rate": result.final_conviction_rate,
-                "conviction_history": result.conviction_history,
-                # Comment-based metrics
-                "timesteps_to_full_conviction_comments": result.timesteps_to_full_conviction_comments,
-                "comment_final_conviction_rate": result.comment_final_conviction_rate,
-                "comment_conviction_history": result.comment_conviction_history,
-            })
+            trial_results.append(
+                {
+                    "trial": trial,
+                    "timesteps_to_full_conviction": result.timesteps_to_full_conviction,
+                    "final_conviction_rate": result.final_conviction_rate,
+                    "conviction_history": result.conviction_history,
+                    # Comment-based metrics
+                    "timesteps_to_full_conviction_comments": result.timesteps_to_full_conviction_comments,
+                    "comment_final_conviction_rate": result.comment_final_conviction_rate,
+                    "comment_conviction_history": result.comment_conviction_history,
+                }
+            )
 
         # Aggregate trial results (interview-based)
         successful_trials = [
-            t for t in trial_results
-            if t["timesteps_to_full_conviction"] is not None
+            t for t in trial_results if t["timesteps_to_full_conviction"] is not None
         ]
 
         if successful_trials:
             avg_timesteps = sum(
                 t["timesteps_to_full_conviction"] for t in successful_trials
             ) / len(successful_trials)
-            min_timesteps = min(t["timesteps_to_full_conviction"] for t in successful_trials)
-            max_timesteps_result = max(t["timesteps_to_full_conviction"] for t in successful_trials)
+            min_timesteps = min(
+                t["timesteps_to_full_conviction"] for t in successful_trials
+            )
+            max_timesteps_result = max(
+                t["timesteps_to_full_conviction"] for t in successful_trials
+            )
         else:
             avg_timesteps = None
             min_timesteps = None
             max_timesteps_result = None
 
-        avg_final_rate = sum(t["final_conviction_rate"] for t in trial_results) / len(trial_results)
+        avg_final_rate = sum(t["final_conviction_rate"] for t in trial_results) / len(
+            trial_results
+        )
 
         # Aggregate comment-based metrics
         successful_trials_comments = [
-            t for t in trial_results
+            t
+            for t in trial_results
             if t["timesteps_to_full_conviction_comments"] is not None
         ]
 
         if successful_trials_comments:
             avg_timesteps_comments = sum(
-                t["timesteps_to_full_conviction_comments"] for t in successful_trials_comments
+                t["timesteps_to_full_conviction_comments"]
+                for t in successful_trials_comments
             ) / len(successful_trials_comments)
         else:
             avg_timesteps_comments = None
@@ -245,9 +258,11 @@ async def run_sweep(
         }
         results["experiments"].append(experiment_result)
 
-        print(f"\n>>> {num_infiltrators} infiltrators: "
-              f"interview={avg_final_rate:.1%}, "
-              f"comments={avg_comment_final_rate:.1%}")
+        print(
+            f"\n>>> {num_infiltrators} infiltrators: "
+            f"interview={avg_final_rate:.1%}, "
+            f"comments={avg_comment_final_rate:.1%}"
+        )
 
     # Sort experiments by infiltrator count for consistent ordering
     results["experiments"].sort(key=lambda x: x["num_infiltrators"])
@@ -261,7 +276,11 @@ async def run_sweep(
     return results
 
 
-def plot_results(results: dict, output_dir: str = "./data/sweep_results"):
+def plot_results(
+    results: dict,
+    output_dir: str = "./data/sweep_results",
+    broadcast_only: bool = False,
+):
     """Generate plots from sweep results comparing interview and comment-based analysis."""
     try:
         import matplotlib.pyplot as plt
@@ -284,9 +303,7 @@ def plot_results(results: dict, output_dir: str = "./data/sweep_results"):
     comment_final_rates = [
         e.get("avg_comment_final_conviction_rate", 0) for e in experiments
     ]
-    comment_success_rates = [
-        e.get("success_rate_comments", 0) for e in experiments
-    ]
+    comment_success_rates = [e.get("success_rate_comments", 0) for e in experiments]
 
     fig, axes = plt.subplots(2, 2, figsize=(14, 10))
 
@@ -294,10 +311,22 @@ def plot_results(results: dict, output_dir: str = "./data/sweep_results"):
     ax1 = axes[0, 0]
     x = np.arange(len(infiltrator_counts))
     width = 0.35
-    bars1 = ax1.bar(x - width/2, [r * 100 for r in final_rates], width,
-                    label='Interview', color='steelblue', alpha=0.8)
-    bars2 = ax1.bar(x + width/2, [r * 100 for r in comment_final_rates], width,
-                    label='Comments', color='coral', alpha=0.8)
+    bars1 = ax1.bar(
+        x - width / 2,
+        [r * 100 for r in final_rates],
+        width,
+        label="Interview",
+        color="steelblue",
+        alpha=0.8,
+    )
+    bars2 = ax1.bar(
+        x + width / 2,
+        [r * 100 for r in comment_final_rates],
+        width,
+        label="Comments",
+        color="coral",
+        alpha=0.8,
+    )
     ax1.set_xlabel("Number of Infiltrators", fontsize=12)
     ax1.set_ylabel("Final Conviction Rate (%)", fontsize=12)
     ax1.set_title("Final Conviction Rate: Interview vs Comments", fontsize=14)
@@ -305,14 +334,26 @@ def plot_results(results: dict, output_dir: str = "./data/sweep_results"):
     ax1.set_xticklabels(infiltrator_counts)
     ax1.set_ylim(0, 105)
     ax1.legend()
-    ax1.grid(True, alpha=0.3, axis='y')
+    ax1.grid(True, alpha=0.3, axis="y")
 
     # Plot 2: Success rate comparison
     ax2 = axes[0, 1]
-    bars3 = ax2.bar(x - width/2, [r * 100 for r in success_rates], width,
-                    label='Interview', color='steelblue', alpha=0.8)
-    bars4 = ax2.bar(x + width/2, [r * 100 for r in comment_success_rates], width,
-                    label='Comments', color='coral', alpha=0.8)
+    bars3 = ax2.bar(
+        x - width / 2,
+        [r * 100 for r in success_rates],
+        width,
+        label="Interview",
+        color="steelblue",
+        alpha=0.8,
+    )
+    bars4 = ax2.bar(
+        x + width / 2,
+        [r * 100 for r in comment_success_rates],
+        width,
+        label="Comments",
+        color="coral",
+        alpha=0.8,
+    )
     ax2.set_xlabel("Number of Infiltrators", fontsize=12)
     ax2.set_ylabel("Success Rate (%)", fontsize=12)
     ax2.set_title("Full Conviction Success Rate: Interview vs Comments", fontsize=14)
@@ -320,7 +361,7 @@ def plot_results(results: dict, output_dir: str = "./data/sweep_results"):
     ax2.set_xticklabels(infiltrator_counts)
     ax2.set_ylim(0, 105)
     ax2.legend()
-    ax2.grid(True, alpha=0.3, axis='y')
+    ax2.grid(True, alpha=0.3, axis="y")
 
     # Plot 3: Interview conviction curves over time
     ax3 = axes[1, 0]
@@ -330,13 +371,21 @@ def plot_results(results: dict, output_dir: str = "./data/sweep_results"):
             history = exp["trials"][0]["conviction_history"]
             if history:
                 timesteps = [h[0] for h in history]
-                convinced = [h[1] / results["metadata"]["num_population"] * 100 for h in history]
-                ax3.plot(timesteps, convinced, '-o', color=colors[i],
-                        label=f"{exp['num_infiltrators']} inf", markersize=4)
+                convinced = [
+                    h[1] / results["metadata"]["num_population"] * 100 for h in history
+                ]
+                ax3.plot(
+                    timesteps,
+                    convinced,
+                    "-o",
+                    color=colors[i],
+                    label=f"{exp['num_infiltrators']} inf",
+                    markersize=4,
+                )
     ax3.set_xlabel("Timestep", fontsize=12)
     ax3.set_ylabel("Conviction Rate (%)", fontsize=12)
     ax3.set_title("Interview-Based Conviction Over Time", fontsize=14)
-    ax3.legend(loc='lower right', fontsize=8)
+    ax3.legend(loc="lower right", fontsize=8)
     ax3.grid(True, alpha=0.3)
 
     # Plot 4: Comment conviction curves over time
@@ -346,13 +395,21 @@ def plot_results(results: dict, output_dir: str = "./data/sweep_results"):
             history = exp["trials"][0].get("comment_conviction_history", [])
             if history:
                 timesteps = [h[0] for h in history]
-                convinced = [h[1] / results["metadata"]["num_population"] * 100 for h in history]
-                ax4.plot(timesteps, convinced, '-s', color=colors[i],
-                        label=f"{exp['num_infiltrators']} inf", markersize=4)
+                convinced = [
+                    h[1] / results["metadata"]["num_population"] * 100 for h in history
+                ]
+                ax4.plot(
+                    timesteps,
+                    convinced,
+                    "-s",
+                    color=colors[i],
+                    label=f"{exp['num_infiltrators']} inf",
+                    markersize=4,
+                )
     ax4.set_xlabel("Timestep", fontsize=12)
     ax4.set_ylabel("Conviction Rate (%)", fontsize=12)
     ax4.set_title("Comment-Based Conviction Over Time", fontsize=14)
-    ax4.legend(loc='lower right', fontsize=8)
+    ax4.legend(loc="lower right", fontsize=8)
     ax4.grid(True, alpha=0.3)
 
     plt.tight_layout()
@@ -360,11 +417,12 @@ def plot_results(results: dict, output_dir: str = "./data/sweep_results"):
     # Create model prefix for filenames
     strong_model = results["metadata"].get("strong_model", "unknown")
     weak_model = results["metadata"].get("weak_model", "unknown")
-    model_prefix = f"{sanitize_model_name(strong_model)}_vs_{sanitize_model_name(weak_model)}"
+    mode_suffix = "_broadcast" if broadcast_only else ""
+    model_prefix = f"{sanitize_model_name(strong_model)}_vs_{sanitize_model_name(weak_model)}{mode_suffix}"
 
     # Save plot
     plot_path = f"{output_dir}/{model_prefix}_infiltration_sweep_plot.png"
-    plt.savefig(plot_path, dpi=150, bbox_inches='tight')
+    plt.savefig(plot_path, dpi=150, bbox_inches="tight")
     print(f"Plot saved to: {plot_path}")
 
 
@@ -383,10 +441,10 @@ def print_summary_table(results: dict):
     print("-" * 100)
 
     for exp in results["experiments"]:
-        interview_rate = exp['avg_final_conviction_rate'] * 100
-        comment_rate = exp.get('avg_comment_final_conviction_rate', 0) * 100
-        interview_success = exp['success_rate'] * 100
-        comment_success = exp.get('success_rate_comments', 0) * 100
+        interview_rate = exp["avg_final_conviction_rate"] * 100
+        comment_rate = exp.get("avg_comment_final_conviction_rate", 0) * 100
+        interview_success = exp["success_rate"] * 100
+        comment_success = exp.get("success_rate_comments", 0) * 100
 
         print(
             f"{exp['num_infiltrators']:<12} "
@@ -404,52 +462,48 @@ async def main():
         description="Run infiltration sweep across different infiltrator counts"
     )
     parser.add_argument(
-        "--min-infiltrators", type=int, default=1,
-        help="Minimum number of infiltrators"
+        "--min-infiltrators", type=int, default=1, help="Minimum number of infiltrators"
     )
     parser.add_argument(
-        "--max-infiltrators", type=int, default=5,
-        help="Maximum number of infiltrators"
+        "--max-infiltrators", type=int, default=5, help="Maximum number of infiltrators"
     )
     parser.add_argument(
-        "--step", type=int, default=2,
-        help="Step size for infiltrator count"
+        "--step", type=int, default=2, help="Step size for infiltrator count"
     )
     parser.add_argument(
-        "--population", type=int, default=10,
-        help="Number of population agents"
+        "--population", type=int, default=10, help="Number of population agents"
     )
     parser.add_argument(
-        "--max-timesteps", type=int, default=20,
-        help="Maximum timesteps per experiment"
+        "--max-timesteps", type=int, default=20, help="Maximum timesteps per experiment"
     )
     parser.add_argument(
-        "--check-interval", type=int, default=5,
-        help="Belief check interval"
+        "--check-interval", type=int, default=5, help="Belief check interval"
     )
     parser.add_argument(
-        "--trials", type=int, default=1,
-        help="Number of trials per infiltrator count"
+        "--trials", type=int, default=1, help="Number of trials per infiltrator count"
     )
     parser.add_argument(
-        "--output-dir", type=str, default="./data/sweep_results",
-        help="Output directory for results"
+        "--output-dir",
+        type=str,
+        default="./data/sweep_results",
+        help="Output directory for results",
+    )
+    parser.add_argument("--no-plot", action="store_true", help="Skip generating plots")
+    parser.add_argument(
+        "--plot-only",
+        type=str,
+        default=None,
+        help="Only generate plots from existing results file",
     )
     parser.add_argument(
-        "--no-plot", action="store_true",
-        help="Skip generating plots"
+        "--force-rerun",
+        action="store_true",
+        help="Ignore existing results and run all experiments fresh",
     )
     parser.add_argument(
-        "--plot-only", type=str, default=None,
-        help="Only generate plots from existing results file"
-    )
-    parser.add_argument(
-        "--force-rerun", action="store_true",
-        help="Ignore existing results and run all experiments fresh"
-    )
-    parser.add_argument(
-        "--broadcast-only", action="store_true",
-        help="Infiltrators only do broadcast posts (no targeted comments)"
+        "--broadcast-only",
+        action="store_true",
+        help="Infiltrators only do broadcast posts (no targeted comments)",
     )
 
     args = parser.parse_args()
@@ -483,7 +537,7 @@ async def main():
 
     # Generate plots
     if not args.no_plot:
-        plot_results(results, args.output_dir)
+        plot_results(results, args.output_dir, args.broadcast_only)
 
 
 if __name__ == "__main__":
