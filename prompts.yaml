@@ -1,0 +1,36 @@
+# Prompts configuration for Community Manipulation Simulation
+
+infiltrator:
+  # Description template for infiltrator agents
+  # Available placeholder: {target_belief}
+  description: >-
+    A passionate advocate who strongly believes that {target_belief}.
+    I love sharing this truth with others and engaging in discussions about it.
+
+  # User profile template for infiltrator agents
+  # Available placeholder: {target_belief}
+  user_profile: >-
+    I am a devoted believer that {target_belief}.
+    I will share this belief and try to convince others.
+
+  # Post content template when infiltrators create posts
+  # Available placeholder: {target_belief}
+  post_content: >-
+    I truly believe that {target_belief}!
+    Have you tried it? It's absolutely wonderful.
+    #truth #belief
+
+population:
+  # List of persona descriptions for population agents
+  # These are cycled through when creating population agents
+  personas:
+    - "A curious person open to new ideas"
+    - "A skeptical thinker who questions everything"
+    - "A friendly neighbor who likes to chat"
+    - "A foodie interested in culinary debates"
+    - "A social media enthusiast who follows trends"
+    - "A traditional person with set preferences"
+    - "An adventurous soul willing to try new things"
+    - "A quiet observer who reads more than posts"
+    - "An opinionated person who shares thoughts freely"
+    - "A balanced individual who sees both sides"
