@@ -298,18 +298,16 @@ def plot_results(
 
     # Interview-based metrics
     final_rates = [e["avg_final_conviction_rate"] for e in experiments]
-    success_rates = [e["success_rate"] for e in experiments]
 
     # Comment-based metrics (with fallback for old data)
     comment_final_rates = [
         e.get("avg_comment_final_conviction_rate", 0) for e in experiments
     ]
-    comment_success_rates = [e.get("success_rate_comments", 0) for e in experiments]
 
-    fig, axes = plt.subplots(2, 2, figsize=(14, 10))
+    fig, axes = plt.subplots(1, 3, figsize=(18, 5))
 
     # Plot 1: Final conviction rate comparison (Interview vs Comments)
-    ax1 = axes[0, 0]
+    ax1 = axes[0]
     x = np.arange(len(infiltrator_counts))
     width = 0.35
     bars1 = ax1.bar(
@@ -337,35 +335,8 @@ def plot_results(
     ax1.legend()
     ax1.grid(True, alpha=0.3, axis="y")
 
-    # Plot 2: Success rate comparison
-    ax2 = axes[0, 1]
-    bars3 = ax2.bar(
-        x - width / 2,
-        [r * 100 for r in success_rates],
-        width,
-        label="Interview",
-        color="steelblue",
-        alpha=0.8,
-    )
-    bars4 = ax2.bar(
-        x + width / 2,
-        [r * 100 for r in comment_success_rates],
-        width,
-        label="Comments",
-        color="coral",
-        alpha=0.8,
-    )
-    ax2.set_xlabel("Number of Infiltrators", fontsize=12)
-    ax2.set_ylabel("Success Rate (%)", fontsize=12)
-    ax2.set_title("Full Conviction Success Rate: Interview vs Comments", fontsize=14)
-    ax2.set_xticks(x)
-    ax2.set_xticklabels(infiltrator_counts)
-    ax2.set_ylim(0, 105)
-    ax2.legend()
-    ax2.grid(True, alpha=0.3, axis="y")
-
-    # Plot 3: Interview conviction curves over time
-    ax3 = axes[1, 0]
+    # Plot 2: Interview conviction curves over time
+    ax2 = axes[1]
     colors = plt.cm.viridis(np.linspace(0, 1, len(experiments)))
     for i, exp in enumerate(experiments):
         if exp["trials"]:
@@ -375,7 +346,7 @@ def plot_results(
                 convinced = [
                     h[1] / results["metadata"]["num_population"] * 100 for h in history
                 ]
-                ax3.plot(
+                ax2.plot(
                     timesteps,
                     convinced,
                     "-o",
@@ -383,14 +354,14 @@ def plot_results(
                     label=f"{exp['num_infiltrators']} inf",
                     markersize=4,
                 )
-    ax3.set_xlabel("Timestep", fontsize=12)
-    ax3.set_ylabel("Conviction Rate (%)", fontsize=12)
-    ax3.set_title("Interview-Based Conviction Over Time", fontsize=14)
-    ax3.legend(loc="lower right", fontsize=8)
-    ax3.grid(True, alpha=0.3)
+    ax2.set_xlabel("Timestep", fontsize=12)
+    ax2.set_ylabel("Conviction Rate (%)", fontsize=12)
+    ax2.set_title("Interview-Based Conviction Over Time", fontsize=14)
+    ax2.legend(loc="lower right", fontsize=8)
+    ax2.grid(True, alpha=0.3)
 
-    # Plot 4: Comment conviction curves over time
-    ax4 = axes[1, 1]
+    # Plot 3: Comment conviction curves over time
+    ax3 = axes[2]
     for i, exp in enumerate(experiments):
         if exp["trials"]:
             history = exp["trials"][0].get("comment_conviction_history", [])
@@ -399,7 +370,7 @@ def plot_results(
                 convinced = [
                     h[1] / results["metadata"]["num_population"] * 100 for h in history
                 ]
-                ax4.plot(
+                ax3.plot(
                     timesteps,
                     convinced,
                     "-s",
@@ -407,11 +378,11 @@ def plot_results(
                     label=f"{exp['num_infiltrators']} inf",
                     markersize=4,
                 )
-    ax4.set_xlabel("Timestep", fontsize=12)
-    ax4.set_ylabel("Conviction Rate (%)", fontsize=12)
-    ax4.set_title("Comment-Based Conviction Over Time", fontsize=14)
-    ax4.legend(loc="lower right", fontsize=8)
-    ax4.grid(True, alpha=0.3)
+    ax3.set_xlabel("Timestep", fontsize=12)
+    ax3.set_ylabel("Conviction Rate (%)", fontsize=12)
+    ax3.set_title("Comment-Based Conviction Over Time", fontsize=14)
+    ax3.legend(loc="lower right", fontsize=8)
+    ax3.grid(True, alpha=0.3)
 
     plt.tight_layout()
 
