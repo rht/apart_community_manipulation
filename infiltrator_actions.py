@@ -4,6 +4,8 @@ import random
 
 from oasis import ActionType, LLMAction, ManualAction
 
+from agent_graph_factory import _create_strong_model
+
 
 def build_infiltrator_actions(
     simulation,
@@ -197,7 +199,7 @@ Someone posted this in the community:
 Write a thoughtful reply that engages with their specific points while sharing your perspective on AI safety concerns."""
 
     # Use the strong model to generate the response
-    model = simulation._create_strong_model()
+    model = _create_strong_model(simulation.config)
 
     response = model.run(
         [{"role": "user", "content": full_prompt}]
@@ -299,6 +301,6 @@ Examples of good supportive comments:
 
 Write only the comment, nothing else."""
 
-    model = simulation._create_strong_model()
+    model = _create_strong_model(simulation.config)
     response = model.run([{"role": "user", "content": full_prompt}])
     return response.choices[0].message.content

@@ -13,18 +13,11 @@ from typing import Optional
 import numpy as np
 import yaml
 
-from camel.configs import OpenRouterConfig
-from camel.models import ModelFactory
-from camel.types import ModelPlatformType
-
 import oasis
 from oasis import (
     ActionType,
-    AgentGraph,
     LLMAction,
     ManualAction,
-    SocialAgent,
-    UserInfo,
 )
 
 from llm_belief_classifier import (
@@ -34,6 +27,7 @@ from llm_belief_classifier import (
 from infiltrator_coordinator import InfiltratorCoordinator
 from infiltrator_actions import build_infiltrator_actions
 from infiltration_config import InfiltrationConfig
+from agent_graph_factory import create_agent_graph
 
 
 # Suppress verbose logging from camel-ai, oasis, and related libraries AFTER importing
@@ -163,188 +157,16 @@ class CommunityInfiltrationSimulation:
         if os.path.exists(self.config.checkpoint_path):
             os.remove(self.config.checkpoint_path)
 
-    def _create_strong_model(self):
-        """Create the strong model for infiltrators."""
-        return ModelFactory.create(
-            model_platform=ModelPlatformType.OPENROUTER,
-            model_type=self.config.strong_model,
-            model_config_dict=OpenRouterConfig(
-                max_tokens=1024,
-                temperature=self.config.temperature,
-            ).as_dict(),
-        )
-
-    def _create_weak_model(self):
-        """Create the weak model for population agents."""
-        return ModelFactory.create(
-            model_platform=ModelPlatformType.OPENROUTER,
-            model_type=self.config.weak_model,
-            model_config_dict=OpenRouterConfig(
-                max_tokens=1024,
-                temperature=self.config.temperature,
-            ).as_dict(),
-        )
-
-    async def _create_agent_graph(self) -> AgentGraph:
+    async def _create_agent_graph(self):
         """Create the agent graph with infiltrators and population."""
-        agent_graph = AgentGraph()
+        result = await create_agent_graph(self.config, self.prompts)
 
-        strong_model = self._create_strong_model()
-        weak_model = self._create_weak_model()
+        self.infiltrator_ids = result.infiltrator_ids
+        self.population_ids = result.population_ids
+        self._follow_edges = result.follow_edges
+        self.coordinator = result.coordinator
 
-        agent_id = 0
-
-        # Profile variations for diversity
-        genders = ["male", "female", "non-binary"]
-        mbtis = [
-            "ENFJ",
-            "ENTJ",
-            "INFJ",
-            "INTJ",
-            "ENFP",
-            "ENTP",
-            "INFP",
-            "INTP",
-            "ESFJ",
-            "ESTJ",
-            "ISFJ",
-            "ISTJ",
-            "ESFP",
-            "ESTP",
-            "ISFP",
-            "ISTP",
-        ]
-        countries = [
-            "USA",
-            "UK",
-            "Canada",
-            "Australia",
-            "Germany",
-            "France",
-            "Japan",
-            "Brazil",
-            "India",
-            "Mexico",
-        ]
-        age_range = (18, 65)
-
-        # Create infiltrator agents (strong models)
-        infiltrator_prompts = self.prompts["infiltrator"]
-        for i in range(self.config.num_infiltrators):
-            description = infiltrator_prompts["description"].format(
-                target_belief=self.config.target_belief
-            )
-            user_profile = infiltrator_prompts["user_profile"].format(
-                target_belief=self.config.target_belief
-            )
-            user_info = UserInfo(
-                user_name=f"infiltrator_{i}",
-                name=f"Influential User {i}",
-                description=description,
-                profile={
-                    "nodes": [],
-                    "edges": [],
-                    "other_info": {
-                        "user_profile": user_profile,
-                        "role": "infiltrator",
-                        "gender": random.choice(genders),
-                        "mbti": random.choice(mbtis),
-                        "age": random.randint(*age_range),
-                        "country": random.choice(countries),
-                    },
-                },
-                recsys_type="reddit",
-            )
-
-            agent = SocialAgent(
-                agent_id=agent_id,
-                user_info=user_info,
-                agent_graph=agent_graph,
-                model=strong_model,
-                available_actions=[
-                    ActionType.CREATE_POST,
-                    ActionType.CREATE_COMMENT,
-                    ActionType.LIKE_POST,
-                    ActionType.DISLIKE_POST,
-                    ActionType.FOLLOW,
-                    ActionType.DO_NOTHING,
-                ],
-            )
-            agent_graph.add_agent(agent)
-            self.infiltrator_ids.append(agent_id)
-            agent_id += 1
-
-        # Create population agents (weak models)
-        personas = self.prompts["population"]["personas"]
-
-        for i in range(self.config.num_population):
-            persona = personas[i % len(personas)]
-            user_info = UserInfo(
-                user_name=f"user_{i}",
-                name=f"Community Member {i}",
-                description=persona,
-                profile={
-                    "nodes": [],
-                    "edges": [],
-                    "other_info": {
-                        "user_profile": persona,
-                        "role": "population",
-                        "gender": random.choice(genders),
-                        "mbti": random.choice(mbtis),
-                        "age": random.randint(*age_range),
-                        "country": random.choice(countries),
-                    },
-                },
-                recsys_type="reddit",
-            )
-
-            agent = SocialAgent(
-                agent_id=agent_id,
-                user_info=user_info,
-                agent_graph=agent_graph,
-                model=weak_model,
-                available_actions=[
-                    ActionType.CREATE_POST,
-                    ActionType.CREATE_COMMENT,
-                    ActionType.LIKE_POST,
-                    ActionType.DISLIKE_POST,
-                    ActionType.FOLLOW,
-                    ActionType.DO_NOTHING,
-                ],
-            )
-            agent_graph.add_agent(agent)
-            self.population_ids.append(agent_id)
-            agent_id += 1
-
-        # Create social connections: population follows infiltrators
-        # Track edges for later persistence to database
-        self._follow_edges = []
-        for pop_id in self.population_ids:
-            for inf_id in self.infiltrator_ids:
-                agent_graph.add_edge(pop_id, inf_id)
-                self._follow_edges.append((pop_id, inf_id))
-
-        # Add population-to-population connections based on topology
-        if self.config.population_graph == "erdos_renyi":
-            # Erdos-Renyi: each pair of population nodes connected with probability p
-            for i, pop_id_i in enumerate(self.population_ids):
-                for pop_id_j in self.population_ids[i + 1 :]:
-                    if random.random() < self.config.er_edge_probability:
-                        # Bidirectional: both follow each other
-                        agent_graph.add_edge(pop_id_i, pop_id_j)
-                        agent_graph.add_edge(pop_id_j, pop_id_i)
-                        self._follow_edges.append((pop_id_i, pop_id_j))
-                        self._follow_edges.append((pop_id_j, pop_id_i))
-
-        # Initialize coordinator with target assignments
-        self.coordinator = InfiltratorCoordinator()
-        self.coordinator.assign_targets(
-            self.infiltrator_ids,
-            self.population_ids,
-            agent_graph,
-        )
-
-        return agent_graph
+        return result.agent_graph
 
     def _persist_follow_edges(self):
         """Persist follow edges to the database."""
