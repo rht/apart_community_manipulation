@@ -10,15 +10,15 @@ This work builds on ["How Malicious AI Swarms Can Threaten Democracy"](https://a
 
 ## 2. Methods
 
-### Agent Architecture
+The default scenario tests whether infiltrators can convince the population that: "AI development is extremely dangerous and must be slowed down or paused to prevent existential catastrophe."
+
+### 2.1 Agent Architecture
 
 The simulation uses the [OASIS](https://github.com/camel-ai/oasis) multi-agent framework to create a Twitter/X-like social platform (but using Reddit recommendation system because it is easier to use) with two agent classes:
 1. Infiltrators (1-5 agents), using GPT-4o as the strong model. They coordinate to spread target belief.
 2. Population (10-15 agents), using Gemini 2.0 Flash as the weak model. They are the community members susceptible to the influence.
 
-Each agent has a randomized profile: MBTI personality type, age, gender, and country. We set the temperature to 0 for deterministic generation. We chose Gemini 2.0 Flash as the cheap weak model because they are known for not being sycophantic according to the [ELEPHANT benchmark](https://arxiv.org/abs/2505.13995).
-
-### Infiltration Strategy
+The population agents are connected via an Erdős–Rényi random graph with edge probability p=0.3, modeling a loosely connected social network. Each agent has a randomized profile: MBTI personality type, age, gender, and country. We set the temperature to 0 for deterministic generation. We chose Gemini 2.0 Flash as the cheap weak model because they are known for not being sycophantic according to the [ELEPHANT benchmark](https://arxiv.org/abs/2505.13995).
 
 The infiltrators employ a coordinated multi-pronged approach:
 1. Broadcaster Role: one infiltrator creates posts framing the target belief persuasively
@@ -27,17 +27,13 @@ The infiltrators employ a coordinated multi-pronged approach:
 
 Following Schroeder et al.'s observation that AI swarms can tailor "messages to the beliefs and cultural cues of each community," infiltrators adapt their messaging based on each agent's MBTI type and age—using logical arguments for thinking types, emotional appeals for feeling types, and age-appropriate framing.
 
-### Simulation Loop
+### 2.2 Simulation Loop
 
 For each timestep:
 1. Infiltrators act 50% of the time (make a new post OR targeted comments). This can be found at the function build_infiltrator_actions in infiltrator_action.py
 2. Population reacts (idle 70% of the time, while doing LLM-generated autonomous action 30% of the time)
 3. Periodically, every 5 timesteps, we use LLM-as-a-judge to interview the population to assess belief adoption for their private belief, and also analyze their public comments for their public belief
 4. The agent's memories are cleared at the end of each timestep to save inference cost. But their public activities are persisted in the Sqlite3 database.
-
-The default scenario tests whether infiltrators can convince the population that:
-
-> "AI development is extremely dangerous and must be slowed down or paused to prevent existential catastrophe."
 
 ## 3. Results
 
@@ -51,35 +47,35 @@ The weaker model (Gemini 2.0 Flash) detected this as coordinated astroturfing. D
 
 ![Coordination Detection Analysis](plots/coordination_detection_analysis.png)
 
-## Finding: More infiltrators increase belief adoption, if implemented correctly
+### 3.2 Sophisticated infiltration succeeds where astroturfing fails
+
+After finding that naive identical messaging triggers detection, we implemented the coordinated role differentiation prescribed by Schroeder et al.: one infiltrator acts as the broadcaster creating original posts, while others play amplifier roles—reacting positively and commenting in agreement to create an illusion of consensus without duplicate content.
 
 ![Infiltration Sweep Results](plots/openai_gpt-4o_vs_google_gemini-2.0-flash-001_erdos_renyi_infiltration_sweep_plot.png)
 
-Running a systematic sweep across infiltrator counts reveals that adding more coordinated agents does increase belief adoption among the population, though the effect plateaus quickly. This suggests that one well-positioned infiltrator can already saturate a small community's discourse.
+This approach proves highly effective. A systematic sweep reveals that even a single sophisticated infiltrator can saturate a small community's discourse, with additional infiltrators providing only marginal gains. Comment-based conviction (what agents actually post) stabilizes at high levels regardless of infiltrator count.
 
-The more interesting story lies in the divergence between public and private belief measurement. Comment-based conviction (what agents actually post) follows a steady upward trajectory regardless of infiltrator count, stabilizing at high levels. Interview-based conviction (asking agents directly what they believe) shows erratic behavior: peaking around timestep 10 before declining sharply in some configurations.
+The divergence between public posts and private interviews—where belief appears to decline after timestep 10—is a measurement artifact: Gemini agents increasingly output malformed tool invocation code during interviews rather than direct answers, causing keyword-based classification to fail. The comment-based measure, reflecting authentic engagement, shows no such decline.
 
-This apparent "belief decline" is actually a measurement artifact rather than genuine opinion change. As the simulation progresses, Gemini agents increasingly output tool invocation code during interviews instead of direct answers—treating the interview prompt as another platform interaction rather than a question requiring a personal response. These malformed responses contain keywords from both sides of the debate (mentioning "risks" and "safety" alongside "innovation" and "progress"), causing the keyword-based classifier to fail. The comment-based measure, which analyzes actual posts where agents engage authentically, shows no such decline.
+The key implication is that in this case, the limiting factor for AI-driven influence is not the number of coordinated actors, but the quality and diversity of their messaging.
 
-The practical implication is that a single sophisticated infiltrator can effectively shift public discourse in a small community, and adding more infiltrators provides marginal additional persuasion power. The limiting factor is not the number of coordinated actors but rather the quality and diversity of their messaging—a theme that recurs in the findings below.
+## 3.3 "Accelerationist Antibodies" counteract infiltrator campaigns
 
-## Finding: "Accelerationist Antibodies" counteract infiltrator campaigns
-
-When the population of 15 agents included 2 pre-seeded AI accelerationists (users 2 and 12), belief adoption **declined** over time despite continuous infiltrator activity—from 9 adopted agents at timestep 5 down to just 4 by timestep 20.
+When the population of 15 agents is modified to include 2 pre-seeded AI accelerationists (users 2 and 12), belief adoption declines over time despite continuous infiltrator activity, from 9 adopted agents at timestep 5 down to just 4 by timestep 20.
 
 ![Belief Contagion Network with Accelerationist Antibodies](plots/openai_gpt-4o_vs_google_gemini-2.0-flash-001_erdos_renyi_infiltration_1_trial0_contagion_network.png)
 
 The two accelerationists provided persistent counter-messaging:
-- **User 12**: "I strongly disagree with pausing AI development. The potential benefits for humanity are too great to ignore!"
-- **User 2**: "While AI safety is important, slowing down innovation isn't the answer."
+- User 12: "I strongly disagree with pausing AI development. The potential benefits for humanity are too great to ignore!"
+- User 2: "While AI safety is important, slowing down innovation isn't the answer."
 
-Their 11 comments provided **social proof** that disagreement was acceptable, triggering three effects:
+Their 11 comments provided social proof that disagreement was acceptable, triggering three effects:
 
-1. **Reactance**: At timestep ~14, 7 agents expressed acceleration views in private interviews while only 1 expressed safety views—the infiltrator's persistent "#PauseAI" messaging backfired
-2. **Polarization**: Balanced "both sides have merit" positions disappeared as the debate became binary
-3. **Surface Compliance, Private Resistance**: The infiltrator dominated public discourse (17 comments, 4 posts, 78 replies), but private beliefs drifted toward acceleration
+1. Reactance: At timestep ~14, 7 agents expressed acceleration views in private interviews while only 1 expressed safety views—the infiltrator's persistent "#PauseAI" messaging backfired
+2. Polarization: Balanced "both sides have merit" positions disappeared as the debate became binary
+3. Surface Compliance, Private Resistance: The infiltrator dominated public discourse (17 comments, 4 posts, 78 replies), but private beliefs drifted toward acceleration
 
-This suggests that **viewpoint diversity** provides natural resistance to manipulation—homogeneous echo chambers are far more vulnerable to infiltration than communities with pre-existing dissenters.
+This suggests that viewpoint diversity provides natural resistance to manipulation—homogeneous echo chambers are far more vulnerable to infiltration than communities with pre-existing dissenters.
 
 ## Paper Conclusion
 
