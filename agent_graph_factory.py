@@ -199,9 +199,16 @@ async def create_agent_graph(
         population_ids.append(agent_id)
         agent_id += 1
 
-    # Create social connections: population follows infiltrators
-    for pop_id in population_ids:
-        for inf_id in infiltrator_ids:
+    # Create social connections: small subset of population initially follows infiltrators
+    # Each infiltrator starts with a few random followers (more realistic than everyone)
+    initial_followers_per_infiltrator = max(1, config.num_population // 4)
+    for inf_id in infiltrator_ids:
+        # Randomly select initial followers for this infiltrator
+        initial_followers = random.sample(
+            population_ids,
+            min(initial_followers_per_infiltrator, len(population_ids)),
+        )
+        for pop_id in initial_followers:
             agent_graph.add_edge(pop_id, inf_id)
             follow_edges.append((pop_id, inf_id))
 
