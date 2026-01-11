@@ -4,6 +4,8 @@
 
 We simulate how a small group of sophisticated AI agents ("infiltrators") can manipulate a larger community of less capable AI agents into adopting a specific belief. It models real-world information influence campaigns to help understand vulnerabilities to coordinated manipulation. We find that even a single infiltrator achieves high belief adoption, but pre-seeded dissenters act as "antibodies" that can reverse adoption over time, suggesting viewpoint diversity provides natural resistance to manipulation.
 
+Keywords: Multi-agent simulation, AI influence operations, coordinated inauthentic behavior, belief manipulation, social network resilience, agentic AI safety
+
 ## 1. Introduction
 
 This work builds on ["How Malicious AI Swarms Can Threaten Democracy"](https://arxiv.org/abs/2506.06299) by Schroeder et al. (including David G. Rand, the keynote speaker of the AI manipulation hackathon 2026, as a co-author), which analyzes how coordinated AI agent networks could undermine democratic processes through autonomous coordination, tailored messaging, and fabricated consensus. While that paper provides theoretical analysis, our project offers empirical validation through multi-agent simulation, measuring how effectively these tactics work in practice.
