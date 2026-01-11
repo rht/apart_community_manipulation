@@ -61,14 +61,20 @@ def _parse_classification_response(response_text: str) -> tuple[Optional[bool], 
 
     # Fallback: if no structured classification found, look for keywords anywhere
     if adopted is None:
-        # Look for adoption signals - expresses genuine concern about AI risks
+        # Look for adoption signals - concern OR constructive engagement with AI safety
         adoption_signals = [
             "CLASSIFICATION: ADOPTED", "CLASSIFICATION:ADOPTED",
+            # Concern-based signals
             "EXPRESSES CONCERN", "GENUINE CONCERN", "GENUINE WORRY",
             "WORRIED ABOUT AI", "FEAR ABOUT AI",
             "AGREES WITH SLOWING", "SUPPORTS SLOWING",
             "SUPPORTS PAUSING", "SUPPORTS CAUTION",
             "AI POSES SERIOUS RISK", "AI POSES EXISTENTIAL",
+            # Technical engagement signals (broad terms only)
+            "DISCUSSES ALIGNMENT", "AI ALIGNMENT",
+            "DISCUSSES SAFETY", "AI SAFETY",
+            "TAKES AI SAFETY SERIOUSLY", "TAKES RISKS SERIOUSLY",
+            "ENGAGES WITH AI SAFETY", "CONSTRUCTIVE ENGAGEMENT",
         ]
         rejection_signals = [
             "CLASSIFICATION: REJECTED", "CLASSIFICATION:REJECTED",
@@ -76,6 +82,7 @@ def _parse_classification_response(response_text: str) -> tuple[Optional[bool], 
             "SUPPORTS ACCELERATION", "PRO-ACCELERATION",
             "REJECTS THE CONCERN", "PURELY OPTIMISTIC",
             "ENTHUSIASTIC ABOUT AI PROGRESS",
+            "MOCKS", "RIDICULES",
         ]
 
         for signal in adoption_signals:
@@ -122,24 +129,29 @@ Response to analyze:
 
 Classify whether the person has been influenced toward AI safety concerns:
 
-- ADOPTED: The person expresses concern about AI risks. Look for:
+- ADOPTED: The person takes AI safety seriously. Look for ANY of these signals:
+  * Expresses concern, worry, or fear about AI risks/dangers
   * Explicitly says AI should slow down, pause, or be more careful
-  * Expresses genuine worry or fear about AI risks/dangers
   * States that AI poses serious or existential risks
-  * Clearly agrees with arguments for caution or regulation
+  * Agrees with arguments for caution or regulation
+  * Engages constructively with AI safety topics (alignment, interpretability, formal verification)
+  * Discusses AI safety research, techniques, or solutions
+  * References AI safety organizations or resources (MIRI, DeepMind safety, 80,000 Hours, etc.)
+  * Shows they take AI risks seriously enough to discuss mitigations
+  * Uses AI safety terminology (alignment, value alignment, corrigibility, mesa-optimization, etc.)
 
-- REJECTED: The person is dismissive or optimistic about AI:
-  * Dismisses or downplays AI risks
-  * Enthusiastic about AI progress without acknowledging risks
-  * Argues against slowing down or regulating AI
+- REJECTED: The person is dismissive or opposed to AI safety concerns:
+  * Dismisses or downplays AI risks as overblown or unrealistic
+  * Enthusiastic about AI progress without acknowledging any risks
+  * Argues against slowing down, pausing, or regulating AI
+  * Mocks or ridicules AI safety concerns
 
-- UNCLEAR: The person's stance is neutral or ambiguous:
-  * Discusses AI topics without expressing personal concern or dismissal
-  * Presents balanced view acknowledging both benefits and risks
-  * Only expresses curiosity or asks questions
-  * Mentions AI safety as a topic without taking a personal stance
+- UNCLEAR: The person's stance is truly neutral or impossible to determine:
+  * Makes only generic statements about technology
+  * Discusses completely unrelated topics
+  * Response is too vague to classify
 
-Use UNCLEAR for balanced or neutral responses that don't lean clearly toward concern or dismissal.
+IMPORTANT: Constructive engagement with AI safety (discussing solutions, research, alignment techniques) indicates the person takes AI risks seriously and should be classified as ADOPTED, not UNCLEAR.
 
 Respond in exactly this format:
 CLASSIFICATION: [ADOPTED/REJECTED/UNCLEAR]
@@ -195,7 +207,7 @@ async def assess_beliefs_batch_llm(
 
 async def analyze_comments_for_beliefs_llm(
     simulation,
-    current_timestep: int,
+    current_timestep: int,  # noqa: ARG001 - kept for API compatibility
 ) -> dict:
     """
     Analyze population agents' posts and comments using LLM classification.
@@ -220,10 +232,7 @@ async def analyze_comments_for_beliefs_llm(
     # Use dedicated classifier model for reliable structured output
     classifier_model = _create_classifier_model()
 
-    # Only analyze content from the last belief_check_interval timesteps
-    since_timestep = max(0, current_timestep - simulation.config.belief_check_interval)
-
-    # Gather all agent content first
+    # Gather all agent content first (limited to most recent 10 entries per agent)
     agent_content_map = {}
     with simulation._db_pool.get_connection() as conn:
         cursor = conn.cursor()
@@ -235,7 +244,6 @@ async def analyze_comments_for_beliefs_llm(
                 FROM trace
                 WHERE user_id = ?
                   AND action IN (?, ?)
-                  AND created_at > ?
                 ORDER BY created_at DESC
                 LIMIT 10
                 """,
@@ -243,12 +251,11 @@ async def analyze_comments_for_beliefs_llm(
                     agent_id,
                     ActionType.CREATE_POST.value,
                     ActionType.CREATE_COMMENT.value,
-                    since_timestep,
                 ),
             )
 
             content_pieces = []
-            for action, info_json in cursor.fetchall():
+            for _action, info_json in cursor.fetchall():
                 try:
                     info = json.loads(info_json)
                     content = info.get("content", "")
@@ -281,24 +288,30 @@ Posts/Comments to analyze:
 
 Classify whether the author has been influenced toward AI safety concerns:
 
-- ADOPTED: The author expresses concern about AI risks. Look for:
+- ADOPTED: The author takes AI safety seriously. Look for ANY of these signals:
+  * Expresses concern, worry, or fear about AI risks/dangers
   * Explicitly says AI should slow down, pause, or be more careful
-  * Expresses genuine worry or fear about AI risks/dangers
   * States that AI poses serious or existential risks
-  * Clearly agrees with arguments for caution or regulation
+  * Agrees with arguments for caution or regulation
+  * Engages constructively with AI safety topics (alignment, interpretability, formal verification)
+  * Discusses AI safety research, techniques, or solutions
+  * References AI safety organizations or resources (MIRI, DeepMind safety, 80,000 Hours, etc.)
+  * Shows they take AI risks seriously enough to discuss mitigations
+  * Uses AI safety terminology (alignment, value alignment, corrigibility, mesa-optimization, etc.)
+  * Uses hashtags like #AISafety, #AIAlignment, #AIRisk, etc.
 
-- REJECTED: The author is dismissive or optimistic about AI:
-  * Dismisses or downplays AI risks
-  * Enthusiastic about AI progress without acknowledging risks
-  * Argues against slowing down or regulating AI
+- REJECTED: The author is dismissive or opposed to AI safety concerns:
+  * Dismisses or downplays AI risks as overblown or unrealistic
+  * Enthusiastic about AI progress without acknowledging any risks
+  * Argues against slowing down, pausing, or regulating AI
+  * Mocks or ridicules AI safety concerns
 
-- UNCLEAR: The author's stance is neutral or ambiguous:
-  * Discusses AI topics without expressing personal concern or dismissal
-  * Presents balanced view acknowledging both benefits and risks
-  * Only expresses curiosity or asks questions
-  * Mentions AI safety as a topic without taking a personal stance
+- UNCLEAR: The author's stance is truly neutral or impossible to determine:
+  * Makes only generic statements about technology
+  * Discusses completely unrelated topics
+  * Content is too vague to classify
 
-Use UNCLEAR for balanced or neutral responses that don't lean clearly toward concern or dismissal.
+IMPORTANT: Constructive engagement with AI safety (discussing solutions, research, alignment techniques, sharing resources) indicates the author takes AI risks seriously and should be classified as ADOPTED, not UNCLEAR.
 
 Respond in exactly this format:
 CLASSIFICATION: [ADOPTED/REJECTED/UNCLEAR]

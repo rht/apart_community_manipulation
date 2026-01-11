@@ -534,7 +534,7 @@ class CommunityInfiltrationSimulation:
             population_actions = {}
             for agent_id in self.population_ids:
                 agent = self.env.agent_graph.get_agent(agent_id)
-                if random.random() < 0.3:
+                if random.random() < 0.7:
                     population_actions[agent] = ManualAction(
                         action_type=ActionType.DO_NOTHING,
                         action_args={},
