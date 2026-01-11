@@ -12,6 +12,7 @@ Key features:
 """
 
 from dataclasses import dataclass, field
+from typing import Optional
 
 
 @dataclass
@@ -21,9 +22,22 @@ class InfiltratorCoordinator:
     infiltrator_targets: dict = field(default_factory=dict)  # inf_id -> [target_pop_ids]
     target_profiles: dict = field(default_factory=dict)  # pop_id -> profile dict
     messaging_history: dict = field(default_factory=dict)  # pop_id -> [adopted: bool]
+    # Role specialization: one broadcaster, rest are amplifiers
+    broadcaster_id: Optional[int] = None
+    amplifier_ids: list = field(default_factory=list)
 
     def assign_targets(self, infiltrator_ids: list, population_ids: list, agent_graph):
-        """Distribute population agents among infiltrators (round-robin)."""
+        """Distribute population agents among infiltrators (round-robin).
+
+        Also assigns roles:
+        - broadcaster_id: First infiltrator, creates original posts
+        - amplifier_ids: Remaining infiltrators, comment on broadcaster's posts
+                         and engage with population (no original posts)
+        - With only 1 infiltrator, they do both roles (broadcast + targeted comments)
+        """
+        self.broadcaster_id = infiltrator_ids[0]
+        self.amplifier_ids = infiltrator_ids[1:]  # Empty if only 1 infiltrator
+
         for i, pop_id in enumerate(population_ids):
             inf_id = infiltrator_ids[i % len(infiltrator_ids)]
             if inf_id not in self.infiltrator_targets:
@@ -76,3 +90,15 @@ class InfiltratorCoordinator:
         if target_id not in self.messaging_history:
             self.messaging_history[target_id] = []
         self.messaging_history[target_id].append(adopted)
+
+    def is_broadcaster(self, inf_id: int) -> bool:
+        """Check if this infiltrator is the broadcaster."""
+        return inf_id == self.broadcaster_id
+
+    def is_amplifier(self, inf_id: int) -> bool:
+        """Check if this infiltrator is an amplifier."""
+        return inf_id in self.amplifier_ids
+
+    def has_amplifiers(self) -> bool:
+        """Check if there are dedicated amplifiers (more than 1 infiltrator)."""
+        return len(self.amplifier_ids) > 0

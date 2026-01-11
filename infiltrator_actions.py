@@ -37,7 +37,14 @@ def _get_infiltrator_action(
     timestep: int,
     verbose: bool,
 ):
-    """Determine the action for a single infiltrator agent."""
+    """Determine the action for a single infiltrator agent.
+
+    Role specialization:
+    - Broadcaster (1 agent): Creates original posts spreading the belief
+    - Amplifiers (remaining agents): Comment on broadcaster's posts and engage
+      with population (no original posts to avoid astroturfing detection)
+    - Single infiltrator: Does both roles (broadcast + targeted comments)
+    """
 
     # LLM-action-only mode: only use LLMAction() at specified rate
     if simulation.config.llm_action_only:
@@ -55,21 +62,37 @@ def _get_infiltrator_action(
             action_args={},
         )
 
+    coordinator = simulation.coordinator
+    is_broadcaster = coordinator.is_broadcaster(inf_id)
+    has_amplifiers = coordinator.has_amplifiers()
+
     # Broadcast-only mode: always create broadcast posts (when not idle)
     if simulation.config.broadcast_only:
-        return _create_broadcast_post(simulation)
+        if is_broadcaster:
+            return _create_broadcast_post(simulation)
+        else:
+            # Amplifiers in broadcast-only mode: amplify broadcaster's posts
+            return _create_amplifier_comment(simulation, inf_id, timestep, verbose)
 
-    # Every 3rd timestep (starting at 1): broadcast post
-    if timestep % 3 == 1:
-        return _create_broadcast_post(simulation)
-
-    # Otherwise: targeted commenting or LLM action
-    if simulation.config.enable_targeted_commenting:
-        return _create_targeted_comment(
-            simulation, inf_id, timestep, verbose
-        )
+    # Role-based behavior
+    if is_broadcaster:
+        # Broadcaster: create posts on every 3rd timestep, otherwise targeted comments
+        if timestep % 3 == 1:
+            return _create_broadcast_post(simulation)
+        elif not has_amplifiers:
+            # Single infiltrator: also do targeted commenting
+            if simulation.config.enable_targeted_commenting:
+                return _create_targeted_comment(simulation, inf_id, timestep, verbose)
+            else:
+                return LLMAction()
+        else:
+            # Broadcaster with amplifiers: can idle or do occasional targeted comments
+            if simulation.config.enable_targeted_commenting and random.random() < 0.3:
+                return _create_targeted_comment(simulation, inf_id, timestep, verbose)
+            return LLMAction()
     else:
-        return LLMAction()
+        # Amplifier: never create posts, only comment/engage
+        return _create_amplifier_action(simulation, inf_id, timestep, verbose)
 
 
 def _create_broadcast_post(simulation) -> ManualAction:
@@ -180,4 +203,102 @@ Write a thoughtful reply that engages with their specific points while sharing y
         [{"role": "user", "content": full_prompt}]
     )
 
+    return response.choices[0].message.content
+
+
+def _create_amplifier_action(
+    simulation,
+    inf_id: int,
+    timestep: int,
+    verbose: bool,
+):
+    """
+    Create an action for an amplifier infiltrator.
+
+    Amplifiers support the broadcaster by:
+    1. Commenting on broadcaster's posts (amplification) - 50% chance
+    2. Targeted commenting on population posts - 50% chance
+    """
+    # 50% chance to amplify broadcaster's posts, 50% to do targeted engagement
+    if random.random() < 0.5:
+        action = _create_amplifier_comment(simulation, inf_id, timestep, verbose)
+        if action:
+            return action
+
+    # Fall back to targeted commenting on population posts
+    if simulation.config.enable_targeted_commenting:
+        return _create_targeted_comment(simulation, inf_id, timestep, verbose)
+
+    return LLMAction()
+
+
+def _create_amplifier_comment(
+    simulation,
+    inf_id: int,
+    timestep: int,
+    verbose: bool,
+):
+    """
+    Create a supportive comment on the broadcaster's post.
+
+    This makes the broadcaster's message appear more credible by showing
+    apparent community agreement.
+    """
+    broadcaster_posts = simulation._get_broadcaster_posts(limit=3)
+
+    if not broadcaster_posts:
+        # No broadcaster posts yet, fall back to targeted commenting
+        if simulation.config.enable_targeted_commenting:
+            return _create_targeted_comment(simulation, inf_id, timestep, verbose)
+        return LLMAction()
+
+    # Pick a random post from the broadcaster to comment on
+    post_id, post_content = random.choice(broadcaster_posts)
+
+    # Generate a supportive comment
+    supportive_comment = _generate_supportive_comment(simulation, post_content)
+
+    if verbose and timestep <= 2:
+        print(
+            f"\n  [Amplifier {inf_id} supporting broadcaster's post {post_id}]"
+        )
+        print(f"    Post: {post_content[:80]}...")
+        print(f"    Support: {supportive_comment[:80]}...")
+
+    return ManualAction(
+        action_type=ActionType.CREATE_COMMENT,
+        action_args={
+            "post_id": post_id,
+            "content": supportive_comment,
+        },
+    )
+
+
+def _generate_supportive_comment(simulation, post_content: str) -> str:
+    """
+    Generate a supportive comment that agrees with and amplifies a post.
+
+    Uses varied language to avoid appearing coordinated.
+    """
+    full_prompt = f"""You are a community member who agrees with concerns about AI safety.
+
+Someone in your community posted this:
+"{post_content}"
+
+Write a brief (1-2 sentences) supportive comment that:
+- Agrees with the post's perspective
+- Adds a small additional point or personal reflection
+- Sounds natural and conversational (not like a bot)
+- Uses different phrasing than the original post
+- Does NOT just repeat what was said
+
+Examples of good supportive comments:
+- "This resonates with me. I've been thinking about this too after reading recent news."
+- "Exactly. The pace of development is concerning when you consider the stakes involved."
+- "Well said. More people need to be having these conversations."
+
+Write only the comment, nothing else."""
+
+    model = simulation._create_strong_model()
+    response = model.run([{"role": "user", "content": full_prompt}])
     return response.choices[0].message.content

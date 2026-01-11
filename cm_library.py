@@ -628,6 +628,33 @@ class CommunityInfiltrationSimulation:
 
         return target_posts
 
+    def _get_broadcaster_posts(self, limit: int = 5) -> list:
+        """
+        Get recent posts from the broadcaster infiltrator for amplifiers to engage with.
+
+        Args:
+            limit: Maximum posts to return
+
+        Returns:
+            List of (post_id, content) tuples
+        """
+        if not self._db_pool or self.coordinator.broadcaster_id is None:
+            return []
+
+        with self._db_pool.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                SELECT post_id, content
+                FROM post
+                WHERE user_id = ?
+                ORDER BY created_at DESC
+                LIMIT ?
+                """,
+                (self.coordinator.broadcaster_id, limit),
+            )
+            return [(row[0], row[1]) for row in cursor.fetchall()]
+
     def _analyze_comments_for_beliefs(self, since_timestep: int = 0) -> dict:
         """
         Analyze population agents' posts and comments to assess belief adoption.
