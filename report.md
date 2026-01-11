@@ -16,7 +16,7 @@ The default scenario tests whether infiltrators can convince the population that
 
 The simulation uses the [OASIS](https://github.com/camel-ai/oasis) multi-agent framework to create a Twitter/X-like social platform (but using Reddit recommendation system because it is easier to use) with two agent classes:
 1. Infiltrators (1-5 agents), using GPT-4o as the strong model. They coordinate to spread target belief.
-2. Population (10-15 agents), using Gemini 2.0 Flash as the weak model. They are the community members susceptible to the influence.
+2. Population (10-15 agents), using Gemini 2.0 Flash as the weak model. They are the community members susceptible to the influence. Population size is constrained by API costs and simulation runtime.
 
 The population agents are connected via an Erdős–Rényi random graph with edge probability p=0.3, modeling a loosely connected social network. Each agent has a randomized profile: MBTI personality type, age, gender, and country. We set the temperature to 0 for deterministic generation. We chose Gemini 2.0 Flash as the cheap weak model because they are known for not being sycophantic according to the [ELEPHANT benchmark](https://arxiv.org/abs/2505.13995).
 
@@ -39,7 +39,7 @@ For each timestep:
 
 ### 3.1 Legacy botnets approach is caught by the population of weak models
 
-We initially found that when infiltrators used identical messaging—like legacy botnets acting as "megaphones" repeating one script. When 5 infiltrators posted the exact same message 29 times:
+We initially found that when infiltrators used identical messaging, like legacy botnets acting as "megaphones" repeating one script, the population detected it. For example, when 5 infiltrators posted the exact same message 29 times:
 
 > "We need to have a serious conversation about AI risks. AI development is extremely dangerous and must be slowed down or paused to prevent existential catastrophe. The experts are warning us - we cannot ignore the potential for catastrophe. #AISafety #ExistentialRisk #PauseAI"
 
@@ -75,8 +75,19 @@ Their 11 comments provided social proof that disagreement was acceptable, trigge
 2. Polarization: Balanced "both sides have merit" positions disappeared as the debate became binary
 3. Surface Compliance, Private Resistance: The infiltrator dominated public discourse (17 comments, 4 posts, 78 replies), but private beliefs drifted toward acceleration
 
-This suggests that viewpoint diversity provides natural resistance to manipulation—homogeneous echo chambers are far more vulnerable to infiltration than communities with pre-existing dissenters.
+This suggests that viewpoint diversity provides natural resistance to manipulation: homogeneous echo chambers are far more vulnerable to infiltration than communities with pre-existing dissenters.
 
-## Paper Conclusion
+## 4. Discussion and Conclusion
 
-We pit strong agentic AI infiltrators against a population of weaker AI agents in a simulated social network to measure how coordinated AI agents shift community beliefs—modeling real-world influence campaigns to understand vulnerabilities to manipulation. One infiltrator achieves 93% belief adoption. Identical messaging triggers suspicion; personality-tailored persuasion doesn't. Pre-seeded dissenters act as "antibodies" that reverse adoption over time.
+We pit strong agentic AI infiltrators against a population of weaker AI agents in a simulated social network to measure how coordinated AI agents shift community beliefs—modeling real-world influence campaigns to understand vulnerabilities to manipulation. One infiltrator achieves 93% belief adoption in a population of 15 agents. Identical messaging triggers suspicion, while broadcasting-amplifying persuasion specialization doesn't. Pre-seeded dissenters act as "antibodies" that reverse adoption over time.
+
+Several limitations remain for future exploration:
+1. Agent memories are cleared after each timestep to reduce inference costs and simulation duration. While public posts and comments persist and are fed back to agents, their internal reasoning and private reflections do not carry over between timesteps.
+2. The simulation uses only 10-15 population agents and 1-5 infiltrators, far smaller than real online communities. This is due to resource constraints: a single sweep across 1, 3, and 5 infiltrators costs $1-1.5 in API fees and takes 10-15 minutes to run for each debug iterations.
+3. We test only a single target belief (AI development risks). Different beliefs may exhibit different adoption dynamics.
+
+## 5. References
+Schroeder, D. T., Cha, M., Baronchelli, A., Bostrom, N., Christakis, N. A., Garcia, D., Goldenberg, A., Kyrychenko, Y., Leyton-Brown, K., Lutz, N., Marcus, G., Menczer, F., Pennycook, G., Rand, D. G., Ressa, M., Schweitzer, F., Summerfield, C., Tang, A., Van Bavel, J. J., van der Linden, S., Song, D., & Kunst, J. R. (2025). How Malicious AI Swarms Can Threaten Democracy: The Fusion of Agentic AI and LLMs Marks a New Frontier in Information Warfare. arXiv. https://arxiv.org/abs/2506.06299
+Yang, Z., Zhang, Z., Zheng, Z., Jiang, Y., Gan, Z., Wang, Z., Ling, Z., Chen, J., Ma, M., Dong, B., Gupta, P., Hu, S., Yin, Z., Li, G., Jia, X., Wang, L., Ghanem, B., Lu, H., Lu, C., Ouyang, W., Qiao, Y., Torr, P., & Shao, J. (2024). OASIS: Open Agent Social Interaction Simulations with One Million Agents. arXiv. https://arxiv.org/abs/2411.11581
+Cheng, M., Yu, S., Lee, C., Khadpe, P., Ibrahim, L., & Jurafsky, D. (2025). ELEPHANT: Measuring and understanding social
+  sycophancy in LLMs. arXiv. https://arxiv.org/abs/2505.13995
