@@ -10,6 +10,7 @@ import sqlite3
 from pathlib import Path
 from typing import Optional
 
+import numpy as np
 import yaml
 
 from camel.configs import OpenRouterConfig
@@ -42,7 +43,8 @@ logging.getLogger("openai").setLevel(logging.WARNING)
 logging.getLogger("oasis").setLevel(logging.WARNING)
 logging.getLogger("social").setLevel(logging.WARNING)
 logging.getLogger("social.agent").setLevel(logging.WARNING)
-
+random.seed(42)  # For reproducibility
+np.random.seed(42)  # For reproducibility
 
 
 def load_prompts(prompts_path: str = None) -> dict:
@@ -340,8 +342,6 @@ class CommunityInfiltrationSimulation:
             "Mexico",
         ]
         age_range = (18, 65)
-
-        random.seed(42)  # For reproducibility
 
         # Create infiltrator agents (strong models)
         infiltrator_prompts = self.prompts["infiltrator"]
@@ -800,7 +800,7 @@ class CommunityInfiltrationSimulation:
             population_actions = {}
             for agent_id in self.population_ids:
                 agent = self.env.agent_graph.get_agent(agent_id)
-                if random.random() < 0.6:
+                if random.random() < 0.3:
                     population_actions[agent] = ManualAction(
                         action_type=ActionType.DO_NOTHING,
                         action_args={},

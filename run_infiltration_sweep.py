@@ -466,7 +466,7 @@ async def main():
         "--step", type=int, default=2, help="Step size for infiltrator count"
     )
     parser.add_argument(
-        "--population", type=int, default=20, help="Number of population agents"
+        "--population", type=int, default=15, help="Number of population agents"
     )
     parser.add_argument(
         "--max-timesteps", type=int, default=20, help="Maximum timesteps per experiment"
