@@ -1,4 +1,4 @@
-# Simulating AI Swarms Manipulation: How Coordinated Infiltrator Agents Shift Community Beliefs
+# AI Swarms Manipulation: How Coordinated Infiltrator Agents Shift Community Beliefs
 
 ## 0. Abstract
 
